@@ -12,7 +12,7 @@
 #define uint32 uint32_t
 #define PPM_HEADER_LEN 18 
 
-int get_shift_amount(unsigned long mask) {
+int getShiftAmount(unsigned long mask) {
 	if (mask == 0) return 0;
 
 	int shift = 0;     // Count how many trailing zeros are in the binary mask
@@ -23,6 +23,26 @@ int get_shift_amount(unsigned long mask) {
 	return shift;
 }
 
+int getActiveScreen(Display *display, Window *root_window_out) {
+	int screen = -1;
+	int screenCount = ScreenCount(display);
+
+	for (int i = 0; i < screenCount; ++i) {
+		*root_window_out = RootWindow(display, i);
+
+		Window trash, trash1;
+		int trash2, trash3, trash4, trash5;
+		uint32 trash6;
+
+		if (XQueryPointer(display, *root_window_out, &trash, &trash1, &trash2, &trash3, &trash4, &trash5, &trash6)) {
+			screen = i;
+			break;
+		}
+	}
+
+	return screen;
+}
+
 int main() {
 	Display *display = XOpenDisplay(NULL);
 
@@ -31,8 +51,13 @@ int main() {
 		return 1;
 	}
 
-	int screen = DefaultScreen(display);
-	Window root_window = RootWindow(display, screen);
+	Window root_window;
+	int screen = getActiveScreen(display, &root_window);
+
+	if (screen == -1) {
+		printf("Failed to get active screen\n");
+		return 1;
+	}
 
 	int width = DisplayWidth(display, screen);
 	int height = DisplayHeight(display, screen);
@@ -52,11 +77,10 @@ int main() {
 			int index = (row * image->width) + col;
 			uint32 pixel = (((uint32 *) image->data)[index]);
 
-			uint32 r_shift = get_shift_amount(image->red_mask);
-			uint32 g_shift = get_shift_amount(image->green_mask);
-			uint32 b_shift = get_shift_amount(image->blue_mask);
+			uint32 r_shift = getShiftAmount(image->red_mask);
+			uint32 g_shift = getShiftAmount(image->green_mask);
+			uint32 b_shift = getShiftAmount(image->blue_mask);
 			
-
 			uint8 r = (pixel & image->red_mask) >> r_shift;
 			uint8 g = (pixel & image->green_mask) >> g_shift;
 			uint8 b = (pixel & image->blue_mask) >> b_shift;
