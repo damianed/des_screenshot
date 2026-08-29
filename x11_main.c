@@ -10,7 +10,12 @@
 #define uint64 uint64_t
 #define uint8 uint8_t
 #define uint32 uint32_t
-#define PPM_HEADER_LEN 18 
+
+#if 0
+#include <dlfcn.h>
+typedef int (*XineramaQueryExtension_t)(Display*, int*, int*);
+typedef int (*XineramaIsActive_t)(Display*);
+#endif
 
 int getShiftAmount(unsigned long mask) {
 	if (mask == 0) return 0;
@@ -59,9 +64,30 @@ int main() {
 		return 1;
 	}
 
+//TODO: I need to use the xinerama extension to capture only one screen if it's active because it merges all into a single
+// x11 screen
+// I will load this dynamically so it still works in set ups without it
+#if 0
+    // temporal test
+    void *xinerama_lib = dlopen("libXinerama.so.1", RTLD_LAZY);
+    if (xinerama_lib == NULL) {
+        printf("Failed to load xinerama lib");
+        return 1;
+    }
+    XineramaQueryExtension_t XineramaQueryExtension = (XineramaQueryExtension_t) dlsym(xinerama_lib, "XineramaQueryExtension");
+    XineramaIsActive_t XineramaIsActive = (XineramaIsActive_t) dlsym(xinerama_lib, "XineramaIsActive");
+    int event_base, error_base;
+    if (XineramaQueryExtension(display, &event_base, &error_base) && XineramaIsActive(display)) {
+        printf("Xinerama is active cuh\n");
+        return 1;
+    }
+    // temporal test
+#endif
+
 	int width = DisplayWidth(display, screen);
 	int height = DisplayHeight(display, screen);
-	
+    printf("Dimensions %dx%d\n", width, height);
+
 	XImage *image = XGetImage(display, root_window, 0, 0, width, height, AllPlanes, ZPixmap);
 
 	if (image == NULL) {
@@ -71,7 +97,7 @@ int main() {
 
 	size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
 	uint32 *png_data = malloc(memory_size);
-	
+
 	for (int row = 0; row < image->height; ++row) {
 		for (int col = 0; col < image->width; ++col) {
 			int index = (row * image->width) + col;
@@ -80,19 +106,19 @@ int main() {
 			uint32 r_shift = getShiftAmount(image->red_mask);
 			uint32 g_shift = getShiftAmount(image->green_mask);
 			uint32 b_shift = getShiftAmount(image->blue_mask);
-			
+
 			uint8 r = (pixel & image->red_mask) >> r_shift;
 			uint8 g = (pixel & image->green_mask) >> g_shift;
 			uint8 b = (pixel & image->blue_mask) >> b_shift;
 
 			pixel = 0xff000000; // reset to 0 except for alpha
-			
+
 			// switch r and b
 			pixel = pixel | (r << b_shift);
 			pixel = pixel | (g << g_shift);
 			pixel = pixel | (b << r_shift);
 
-			png_data[index] = pixel;	
+			png_data[index] = pixel;
 		}
 	}
 
