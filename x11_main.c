@@ -3,6 +3,9 @@
 #include <stdint.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <dlfcn.h>
+//TODO: remove this and load dynamically
+#include <X11/extensions/Xinerama.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
@@ -11,11 +14,21 @@
 #define uint8 uint8_t
 #define uint32 uint32_t
 
-#if 0
-#include <dlfcn.h>
-typedef int (*XineramaQueryExtension_t)(Display*, int*, int*);
-typedef int (*XineramaIsActive_t)(Display*);
-#endif
+//Xinerama type declarations
+//typedef struct {
+//		int   screen_number;
+//	 	short x_org;
+//	 	short y_org;
+//	 	short width;
+//	 	short height;
+//} XineramaScreenInfo;
+//
+//typedef int (*XineramaQueryExtension_t)(Display*, int*, int*);
+//typedef int (*XineramaIsActive_t)(Display*);
+//typedef int (*XineramaIsActive_t)(Display*);
+//end
+
+#define ScreenInfo XineramaScreenInfo
 
 int getShiftAmount(unsigned long mask) {
 	if (mask == 0) return 0;
@@ -28,7 +41,34 @@ int getShiftAmount(unsigned long mask) {
 	return shift;
 }
 
-int getActiveScreen(Display *display, Window *root_window_out) {
+ScreenInfo getActiveScreenFromXinerama(Display *display, Window *root_window_out) {
+	int screenCount = 0;
+	ScreenInfo *screensInfo = XineramaQueryScreens(display, &screenCount);
+	printf("xinerama num of screens %d\n", screenCount);
+	*root_window_out = RootWindow(display, 0);
+
+	Window root_return, child_return;
+	int root_x, root_y, win_x, win_y;
+	uint32 mask_return;
+	if (XQueryPointer(display, *root_window_out, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+		for (int i = 0; i < screenCount; i++) {
+			ScreenInfo currScreen = screensInfo[i];
+			if (
+				(root_x >= currScreen.x_org && root_x < currScreen.x_org + currScreen.width) &&
+				(root_y >= currScreen.y_org && root_y < currScreen.y_org + currScreen.height)
+			) {
+				return currScreen;
+			}
+
+		}
+	}
+
+	ScreenInfo failed = {0};
+	failed.screen_number = -1;
+	return failed;
+}
+
+ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 	int screen = -1;
 	int screenCount = ScreenCount(display);
 
@@ -45,7 +85,10 @@ int getActiveScreen(Display *display, Window *root_window_out) {
 		}
 	}
 
-	return screen;
+	int width = DisplayWidth(display, screen);
+	int height = DisplayHeight(display, screen);
+
+	return (ScreenInfo) {.screen_number=screen, .x_org=0, .y_org=0, .width=width, .height=height};
 }
 
 int main() {
@@ -57,39 +100,37 @@ int main() {
 	}
 
 	Window root_window;
-	int screen = getActiveScreen(display, &root_window);
-
-	if (screen == -1) {
-		printf("Failed to get active screen\n");
-		return 1;
-	}
 
 //TODO: I need to use the xinerama extension to capture only one screen if it's active because it merges all into a single
 // x11 screen
 // I will load this dynamically so it still works in set ups without it
-#if 0
     // temporal test
-    void *xinerama_lib = dlopen("libXinerama.so.1", RTLD_LAZY);
-    if (xinerama_lib == NULL) {
-        printf("Failed to load xinerama lib");
-        return 1;
-    }
-    XineramaQueryExtension_t XineramaQueryExtension = (XineramaQueryExtension_t) dlsym(xinerama_lib, "XineramaQueryExtension");
-    XineramaIsActive_t XineramaIsActive = (XineramaIsActive_t) dlsym(xinerama_lib, "XineramaIsActive");
+    //void *xinerama_lib = dlopen("libXinerama.so.1", RTLD_LAZY);
+    //if (xinerama_lib == NULL) {
+    //    printf("Failed to load xinerama lib");
+    //    return 1;
+    //}
+    //XineramaQueryExtension_t XineramaQueryExtension = (XineramaQueryExtension_t) dlsym(xinerama_lib, "XineramaQueryExtension");
+    //XineramaIsActive_t XineramaIsActive = (XineramaIsActive_t) dlsym(xinerama_lib, "XineramaIsActive");
     int event_base, error_base;
+	ScreenInfo screen;
     if (XineramaQueryExtension(display, &event_base, &error_base) && XineramaIsActive(display)) {
-        printf("Xinerama is active cuh\n");
-        return 1;
-    }
+        printf("Xinerama is active\n");
+		screen = getActiveScreenFromXinerama(display, &root_window);
+    } else {
+		screen = getActiveScreen(display, &root_window);
+	}
+
+	if (screen.screen_number == -1) {
+		printf("Couldn't get screen\n");
+		return 1;
+	}
+
     // temporal test
-#endif
 
-	int width = DisplayWidth(display, screen);
-	int height = DisplayHeight(display, screen);
-    printf("Dimensions %dx%d\n", width, height);
+	printf("Dimensions %dx%d\n", screen.width, screen.height);
 
-	XImage *image = XGetImage(display, root_window, 0, 0, width, height, AllPlanes, ZPixmap);
-
+	XImage *image = XGetImage(display, root_window, screen.x_org, screen.y_org, screen.width, screen.height, AllPlanes, ZPixmap);
 	if (image == NULL) {
 		printf("Could not get image\n");
 		return 1;
