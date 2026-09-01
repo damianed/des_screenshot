@@ -4,8 +4,8 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <dlfcn.h>
-//TODO: remove this and load dynamically
-#include <X11/extensions/Xinerama.h>
+//TODO: remove this and load xrandr dynamically
+#include <X11/extensions/Xrandr.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
@@ -14,21 +14,11 @@
 #define uint8 uint8_t
 #define uint32 uint32_t
 
-//Xinerama type declarations
-//typedef struct {
-//		int   screen_number;
-//	 	short x_org;
-//	 	short y_org;
-//	 	short width;
-//	 	short height;
-//} XineramaScreenInfo;
-//
-//typedef int (*XineramaQueryExtension_t)(Display*, int*, int*);
-//typedef int (*XineramaIsActive_t)(Display*);
-//typedef int (*XineramaIsActive_t)(Display*);
-//end
-
-#define ScreenInfo XineramaScreenInfo
+typedef struct {
+ int valid;
+ int x, y;
+ uint32 width, height;
+} ScreenInfo;
 
 int getShiftAmount(unsigned long mask) {
 	if (mask == 0) return 0;
@@ -41,38 +31,54 @@ int getShiftAmount(unsigned long mask) {
 	return shift;
 }
 
-ScreenInfo getActiveScreenFromXinerama(Display *display, Window *root_window_out) {
-	int screenCount = 0;
-	ScreenInfo *screensInfo = XineramaQueryScreens(display, &screenCount);
-	printf("xinerama num of screens %d\n", screenCount);
+ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) {
+	ScreenInfo result = {.valid = 0};
 	*root_window_out = RootWindow(display, 0);
+	XRRScreenResources *screens = XRRGetScreenResources(display, *root_window_out);
+	if (!screens) {
+		printf("Failed to get resources from xrandr\n");
+		return result;
+	}
 
 	Window root_return, child_return;
 	int root_x, root_y, win_x, win_y;
 	uint32 mask_return;
 	if (XQueryPointer(display, *root_window_out, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
-		for (int i = 0; i < screenCount; i++) {
-			ScreenInfo currScreen = screensInfo[i];
-			if (
-				(root_x >= currScreen.x_org && root_x < currScreen.x_org + currScreen.width) &&
-				(root_y >= currScreen.y_org && root_y < currScreen.y_org + currScreen.height)
-			) {
-				return currScreen;
+
+		if (root_x >= 0 && root_y >= 0) {
+			for (int i = 0; i < screens->ncrtc; i++) {
+				XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
+				
+				if (
+					(root_x >= info->x && (uint32) root_x < info->x + (uint32) info->width) &&
+					(root_y >= info->y && (uint32) root_y < info->y + (uint32) info->height)
+				) {
+					result.valid = 1;
+					result.x = info->x;
+					result.y = info->x;
+					result.width = info->width;
+					result.height = info->height;
+					break;
+				}
 			}
-
+		} else {
+			printf("Invalid pointer coordinates returned\n");
 		}
-	}
 
-	ScreenInfo failed = {0};
-	failed.screen_number = -1;
-	return failed;
+	} else {
+		printf("Failed to query pointer\n");
+	}
+		
+
+	XRRFreeScreenResources(screens);
+	return result;
 }
 
 ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 	int screen = -1;
 	int screenCount = ScreenCount(display);
 
-	for (int i = 0; i < screenCount; ++i) {
+	for (int i = 0; i < screenCount; i++) {
 		*root_window_out = RootWindow(display, i);
 
 		Window trash, trash1;
@@ -87,8 +93,12 @@ ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 
 	int width = DisplayWidth(display, screen);
 	int height = DisplayHeight(display, screen);
+	ScreenInfo result = {0, 0, 0, width, height};
+	if (screen >= 0) {
+		result.valid = 1;
+	}
 
-	return (ScreenInfo) {.screen_number=screen, .x_org=0, .y_org=0, .width=width, .height=height};
+	return result;
 }
 
 int main() {
@@ -101,36 +111,24 @@ int main() {
 
 	Window root_window;
 
-//TODO: I need to use the xinerama extension to capture only one screen if it's active because it merges all into a single
-// x11 screen
-// I will load this dynamically so it still works in set ups without it
-    // temporal test
-    //void *xinerama_lib = dlopen("libXinerama.so.1", RTLD_LAZY);
-    //if (xinerama_lib == NULL) {
-    //    printf("Failed to load xinerama lib");
-    //    return 1;
-    //}
-    //XineramaQueryExtension_t XineramaQueryExtension = (XineramaQueryExtension_t) dlsym(xinerama_lib, "XineramaQueryExtension");
-    //XineramaIsActive_t XineramaIsActive = (XineramaIsActive_t) dlsym(xinerama_lib, "XineramaIsActive");
     int event_base, error_base;
 	ScreenInfo screen;
-    if (XineramaQueryExtension(display, &event_base, &error_base) && XineramaIsActive(display)) {
-        printf("Xinerama is active\n");
-		screen = getActiveScreenFromXinerama(display, &root_window);
+	if (XRRQueryExtension(display, &event_base, &error_base)) {
+		//TODO: this seems very slow, measure and figure out a way to make it faster
+		screen = getActiveScreenFromXrandr(display, &root_window);
     } else {
+		printf("xrandr is not active\n");
 		screen = getActiveScreen(display, &root_window);
 	}
 
-	if (screen.screen_number == -1) {
+	if (!screen.valid) {
 		printf("Couldn't get screen\n");
 		return 1;
 	}
 
-    // temporal test
+	printf("Active screen dimensions %dx%d\n", screen.width, screen.height);
 
-	printf("Dimensions %dx%d\n", screen.width, screen.height);
-
-	XImage *image = XGetImage(display, root_window, screen.x_org, screen.y_org, screen.width, screen.height, AllPlanes, ZPixmap);
+	XImage *image = XGetImage(display, root_window, screen.x, screen.y, screen.width, screen.height, AllPlanes, ZPixmap);
 	if (image == NULL) {
 		printf("Could not get image\n");
 		return 1;

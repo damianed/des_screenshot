@@ -1,1 +1,1 @@
- gcc -g -Wall -Wextra -std=c99 x11_main.c -o screenshot -lX11 -lXinerama
+ gcc -g -Wall -Wextra -std=c99 x11_main.c -o screenshot -lX11 -lXrandr
