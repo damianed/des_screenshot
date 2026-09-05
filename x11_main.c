@@ -21,19 +21,22 @@ typedef struct {
 } ScreenInfo;
 
 int getShiftAmount(unsigned long mask) {
-	if (mask == 0) return 0;
+	if (mask == 0) {
+        return 0;
+    }
 
 	int shift = 0;     // Count how many trailing zeros are in the binary mask
 	while ((mask & 1) == 0) {
    		mask >>= 1;
 		shift++;
 	}
+
 	return shift;
 }
 
 ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) {
 	ScreenInfo result = {.valid = 0};
-	*root_window_out = RootWindow(display, 0);
+    *root_window_out = DefaultRootWindow(display);
 	XRRScreenResources *screens = XRRGetScreenResources(display, *root_window_out);
 	if (!screens) {
 		printf("Failed to get resources from xrandr\n");
@@ -44,21 +47,20 @@ ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) 
 	int root_x, root_y, win_x, win_y;
 	uint32 mask_return;
 	if (XQueryPointer(display, *root_window_out, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
-
 		if (root_x >= 0 && root_y >= 0) {
 			for (int i = 0; i < screens->ncrtc; i++) {
 				XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
-				
+
 				if (
 					(root_x >= info->x && (uint32) root_x < info->x + (uint32) info->width) &&
 					(root_y >= info->y && (uint32) root_y < info->y + (uint32) info->height)
 				) {
 					result.valid = 1;
 					result.x = info->x;
-					result.y = info->x;
+					result.y = info->y;
 					result.width = info->width;
 					result.height = info->height;
-					break;
+				    break;
 				}
 			}
 		} else {
@@ -68,7 +70,6 @@ ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) 
 	} else {
 		printf("Failed to query pointer\n");
 	}
-		
 
 	XRRFreeScreenResources(screens);
 	return result;
@@ -93,7 +94,7 @@ ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 
 	int width = DisplayWidth(display, screen);
 	int height = DisplayHeight(display, screen);
-	ScreenInfo result = {0, 0, 0, width, height};
+	ScreenInfo result = {.valid=0, .x=0, .y=0, width, height};
 	if (screen >= 0) {
 		result.valid = 1;
 	}
