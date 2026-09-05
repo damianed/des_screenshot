@@ -1,1 +1,1 @@
- gcc -g -Wall -Wextra -std=c99 x11_main.c -o screenshot -lX11 -lXrandr
+ gcc -g -Wall -Wextra -std=gnu99 -pedantic x11_main.c -o screenshot -lX11 -lXrandr

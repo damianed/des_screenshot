@@ -4,20 +4,24 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <dlfcn.h>
+#include <time.h>
 //TODO: remove this and load xrandr dynamically
 #include <X11/extensions/Xrandr.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
 
+#define DES_TIME_DEBUG_IMPLEMENTATION
+#include "lib/des_time_debug.h"
+
 #define uint64 uint64_t
 #define uint8 uint8_t
-#define uint32 uint32_t
+#define uint uint32_t
 
 typedef struct {
  int valid;
  int x, y;
- uint32 width, height;
+ uint width, height;
 } ScreenInfo;
 
 int getShiftAmount(unsigned long mask) {
@@ -37,23 +41,31 @@ int getShiftAmount(unsigned long mask) {
 ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) {
 	ScreenInfo result = {.valid = 0};
     *root_window_out = DefaultRootWindow(display);
-	XRRScreenResources *screens = XRRGetScreenResources(display, *root_window_out);
+
+    des_start_debug("Get Screens");
+	XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window_out);
+    des_end_debug("Get Screens");
+
 	if (!screens) {
 		printf("Failed to get resources from xrandr\n");
 		return result;
 	}
 
+    des_start_debug("Query Pointer");
 	Window root_return, child_return;
 	int root_x, root_y, win_x, win_y;
-	uint32 mask_return;
+	uint mask_return;
 	if (XQueryPointer(display, *root_window_out, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+        des_end_debug("Query Pointer");
+
+        des_start_debug("Get Info");
 		if (root_x >= 0 && root_y >= 0) {
 			for (int i = 0; i < screens->ncrtc; i++) {
 				XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
 
 				if (
-					(root_x >= info->x && (uint32) root_x < info->x + (uint32) info->width) &&
-					(root_y >= info->y && (uint32) root_y < info->y + (uint32) info->height)
+					(root_x >= info->x && (uint) root_x < info->x + (uint) info->width) &&
+					(root_y >= info->y && (uint) root_y < info->y + (uint) info->height)
 				) {
 					result.valid = 1;
 					result.x = info->x;
@@ -67,11 +79,15 @@ ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) 
 			printf("Invalid pointer coordinates returned\n");
 		}
 
+        des_end_debug("Get Info");
 	} else {
 		printf("Failed to query pointer\n");
 	}
 
+    des_start_debug("Free Screen");
 	XRRFreeScreenResources(screens);
+    des_end_debug("Free Screen");
+
 	return result;
 }
 
@@ -84,7 +100,7 @@ ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 
 		Window trash, trash1;
 		int trash2, trash3, trash4, trash5;
-		uint32 trash6;
+		uint trash6;
 
 		if (XQueryPointer(display, *root_window_out, &trash, &trash1, &trash2, &trash3, &trash4, &trash5, &trash6)) {
 			screen = i;
@@ -114,9 +130,14 @@ int main() {
 
     int event_base, error_base;
 	ScreenInfo screen;
+
+    des_start_debug("Query Extension");
 	if (XRRQueryExtension(display, &event_base, &error_base)) {
-		//TODO: this seems very slow, measure and figure out a way to make it faster
+        des_end_debug("Query Extension");
+
+        des_start_debug("Get Active Screen");
 		screen = getActiveScreenFromXrandr(display, &root_window);
+        des_end_debug("Get Active Screen");
     } else {
 		printf("xrandr is not active\n");
 		screen = getActiveScreen(display, &root_window);
@@ -129,23 +150,27 @@ int main() {
 
 	printf("Active screen dimensions %dx%d\n", screen.width, screen.height);
 
+    des_start_debug("Get XImage");
 	XImage *image = XGetImage(display, root_window, screen.x, screen.y, screen.width, screen.height, AllPlanes, ZPixmap);
+    des_end_debug("Get XImage");
+
 	if (image == NULL) {
 		printf("Could not get image\n");
 		return 1;
 	}
 
+    des_start_debug("Swtich pixels");
 	size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
-	uint32 *png_data = malloc(memory_size);
+	uint *png_data = malloc(memory_size);
 
 	for (int row = 0; row < image->height; ++row) {
 		for (int col = 0; col < image->width; ++col) {
 			int index = (row * image->width) + col;
-			uint32 pixel = (((uint32 *) image->data)[index]);
+			uint pixel = (((uint *) image->data)[index]);
 
-			uint32 r_shift = getShiftAmount(image->red_mask);
-			uint32 g_shift = getShiftAmount(image->green_mask);
-			uint32 b_shift = getShiftAmount(image->blue_mask);
+			uint r_shift = getShiftAmount(image->red_mask);
+			uint g_shift = getShiftAmount(image->green_mask);
+			uint b_shift = getShiftAmount(image->blue_mask);
 
 			uint8 r = (pixel & image->red_mask) >> r_shift;
 			uint8 g = (pixel & image->green_mask) >> g_shift;
@@ -161,7 +186,13 @@ int main() {
 			png_data[index] = pixel;
 		}
 	}
+    des_end_debug("Swtich pixels");
 
+
+    des_start_debug("Create Img");
     stbi_write_png("screenshot.png", image->width, image->height, 4, png_data, image->width * 4);
+    des_end_debug("Create Img");
+
+    des_print_all_debugs();
 	free(png_data);
 }
