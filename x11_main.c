@@ -38,12 +38,11 @@ int getShiftAmount(unsigned long mask) {
 	return shift;
 }
 
-ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) {
+ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window) {
 	ScreenInfo result = {.valid = 0};
-    *root_window_out = DefaultRootWindow(display);
 
     des_start_debug("Get Screens");
-	XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window_out);
+	XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window);
     des_end_debug("Get Screens");
 
 	if (!screens) {
@@ -55,7 +54,7 @@ ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window_out) 
 	Window root_return, child_return;
 	int root_x, root_y, win_x, win_y;
 	uint mask_return;
-	if (XQueryPointer(display, *root_window_out, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+	if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
         des_end_debug("Query Pointer");
 
         des_start_debug("Get Info");
@@ -118,7 +117,15 @@ ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
 	return result;
 }
 
-int main() {
+
+int main(int argc, char *argv[]) {
+    for (int i = 0; i < argc; i++) {
+        //TODO: PARSE ACTIVE WINDOW ARG AND CREATE A FUNCTION THAT RETURNS THE COORDS
+        //ONLY FOR THE ACTIVE WINDOW SO I CAN XGetImage WITH THOSE COORDS AND CREATE A
+        //SCREENSHOT OF THAT WINDOW ONLY
+        printf("argument %d : %s\n", i, argv[i]);
+    }
+
 	Display *display = XOpenDisplay(NULL);
 
 	if (display == NULL) {
@@ -127,6 +134,7 @@ int main() {
 	}
 
 	Window root_window;
+    root_window = DefaultRootWindow(display);
 
     int event_base, error_base;
 	ScreenInfo screen;
@@ -152,6 +160,7 @@ int main() {
 
     des_start_debug("Get XImage");
 	XImage *image = XGetImage(display, root_window, screen.x, screen.y, screen.width, screen.height, AllPlanes, ZPixmap);
+
     des_end_debug("Get XImage");
 
 	if (image == NULL) {
@@ -163,29 +172,31 @@ int main() {
 	size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
 	uint *png_data = malloc(memory_size);
 
-	for (int row = 0; row < image->height; ++row) {
-		for (int col = 0; col < image->width; ++col) {
-			int index = (row * image->width) + col;
-			uint pixel = (((uint *) image->data)[index]);
+    if (image->byte_order == LSBFirst) {
+        for (int row = 0; row < image->height; ++row) {
+            for (int col = 0; col < image->width; ++col) {
+                int index = (row * image->width) + col;
+                uint pixel = (((uint *) image->data)[index]);
 
-			uint r_shift = getShiftAmount(image->red_mask);
-			uint g_shift = getShiftAmount(image->green_mask);
-			uint b_shift = getShiftAmount(image->blue_mask);
+                uint r_shift = getShiftAmount(image->red_mask);
+                uint g_shift = getShiftAmount(image->green_mask);
+                uint b_shift = getShiftAmount(image->blue_mask);
 
-			uint8 r = (pixel & image->red_mask) >> r_shift;
-			uint8 g = (pixel & image->green_mask) >> g_shift;
-			uint8 b = (pixel & image->blue_mask) >> b_shift;
+                uint8 r = (pixel & image->red_mask) >> r_shift;
+                uint8 g = (pixel & image->green_mask) >> g_shift;
+                uint8 b = (pixel & image->blue_mask) >> b_shift;
 
-			pixel = 0xff000000; // reset to 0 except for alpha
+                pixel = 0xff000000; // reset to 0 except for alpha
 
-			// switch r and b
-			pixel = pixel | (r << b_shift);
-			pixel = pixel | (g << g_shift);
-			pixel = pixel | (b << r_shift);
+                // switch r and b
+                pixel = pixel | (r << b_shift);
+                pixel = pixel | (g << g_shift);
+                pixel = pixel | (b << r_shift);
 
-			png_data[index] = pixel;
-		}
-	}
+                png_data[index] = pixel;
+            }
+        }
+    }
     des_end_debug("Swtich pixels");
 
 
