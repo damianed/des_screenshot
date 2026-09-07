@@ -37,7 +37,7 @@ long long unsigned des_getTimeMs() {
     return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-des_b32 strEquals(char *s1, char *s2) {
+des_b32 des_time_debug_strEquals(char *s1, char *s2) {
 #define MAX_LEN 255
     des_uint count = 0;
     while (count++ < MAX_LEN) {
@@ -55,7 +55,7 @@ des_b32 strEquals(char *s1, char *s2) {
 
 des_TimeDebug *des_getDebug(char *id) {
     for (des_uint i = 0; i < debug_count; i++) {
-        if (strEquals(debugs_ids[i], id)) {
+        if (des_time_debug_strEquals(debugs_ids[i], id)) {
             return &debugs[i];
         };
     }

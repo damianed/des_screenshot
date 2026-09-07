@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <dlfcn.h>
@@ -19,158 +20,193 @@
 #define uint uint32_t
 
 typedef struct {
- int valid;
+ bool valid;
  int x, y;
  uint width, height;
-} ScreenInfo;
+} ScreenSection;
+
+bool strEquals(char *s1, char *s2) {
+#define MAX_LEN 255
+    des_uint count = 0;
+    while (count++ < MAX_LEN) {
+        if ((*s1 == '\0' || *s2 == '\0') || (*s1++ != *s2++)) {
+            break;
+        }
+    }
+
+    if (*s1 == '\0' && *s2 == '\0') {
+        return 1;
+    }
+
+    return 0;
+}
 
 int getShiftAmount(unsigned long mask) {
-	if (mask == 0) {
+    if (mask == 0) {
         return 0;
     }
 
-	int shift = 0;     // Count how many trailing zeros are in the binary mask
-	while ((mask & 1) == 0) {
-   		mask >>= 1;
-		shift++;
-	}
+    int shift = 0;     // Count how many trailing zeros are in the binary mask
+    while ((mask & 1) == 0) {
+           mask >>= 1;
+        shift++;
+    }
 
-	return shift;
+    return shift;
 }
 
-ScreenInfo getActiveScreenFromXrandr(Display *display, Window *root_window) {
-	ScreenInfo result = {.valid = 0};
+ScreenSection getActiveScreenFromXrandr(Display *display, Window *root_window) {
+    ScreenSection result = {.valid = 0};
 
     des_start_debug("Get Screens");
-	XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window);
+    XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window);
     des_end_debug("Get Screens");
 
-	if (!screens) {
-		printf("Failed to get resources from xrandr\n");
-		return result;
-	}
+    if (!screens) {
+        printf("Failed to get resources from xrandr\n");
+        return result;
+    }
 
     des_start_debug("Query Pointer");
-	Window root_return, child_return;
-	int root_x, root_y, win_x, win_y;
-	uint mask_return;
-	if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+    Window root_return, child_return;
+    int root_x, root_y, win_x, win_y;
+    uint mask_return;
+    if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
         des_end_debug("Query Pointer");
 
         des_start_debug("Get Info");
-		if (root_x >= 0 && root_y >= 0) {
-			for (int i = 0; i < screens->ncrtc; i++) {
-				XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
+        if (root_x >= 0 && root_y >= 0) {
+            for (int i = 0; i < screens->ncrtc; i++) {
+                XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
 
-				if (
-					(root_x >= info->x && (uint) root_x < info->x + (uint) info->width) &&
-					(root_y >= info->y && (uint) root_y < info->y + (uint) info->height)
-				) {
-					result.valid = 1;
-					result.x = info->x;
-					result.y = info->y;
-					result.width = info->width;
-					result.height = info->height;
-				    break;
-				}
-			}
-		} else {
-			printf("Invalid pointer coordinates returned\n");
-		}
+                if (
+                    (root_x >= info->x && (uint) root_x < info->x + (uint) info->width) &&
+                    (root_y >= info->y && (uint) root_y < info->y + (uint) info->height)
+                ) {
+                    result.valid = 1;
+                    result.x = info->x;
+                    result.y = info->y;
+                    result.width = info->width;
+                    result.height = info->height;
+                    break;
+                }
+            }
+        } else {
+            printf("Invalid pointer coordinates returned\n");
+        }
 
         des_end_debug("Get Info");
-	} else {
-		printf("Failed to query pointer\n");
-	}
+    } else {
+        printf("Failed to query pointer\n");
+    }
 
     des_start_debug("Free Screen");
-	XRRFreeScreenResources(screens);
+    XRRFreeScreenResources(screens);
     des_end_debug("Free Screen");
 
-	return result;
+    return result;
 }
 
-ScreenInfo getActiveScreen(Display *display, Window *root_window_out) {
-	int screen = -1;
-	int screenCount = ScreenCount(display);
+ScreenSection getActiveScreen(Display *display, Window *root_window_out) {
+    int screen = -1;
+    int screenCount = ScreenCount(display);
 
-	for (int i = 0; i < screenCount; i++) {
-		*root_window_out = RootWindow(display, i);
+    for (int i = 0; i < screenCount; i++) {
+        *root_window_out = RootWindow(display, i);
 
-		Window trash, trash1;
-		int trash2, trash3, trash4, trash5;
-		uint trash6;
+        Window trash, trash1;
+        int trash2, trash3, trash4, trash5;
+        uint trash6;
 
-		if (XQueryPointer(display, *root_window_out, &trash, &trash1, &trash2, &trash3, &trash4, &trash5, &trash6)) {
-			screen = i;
-			break;
-		}
-	}
+        if (XQueryPointer(display, *root_window_out, &trash, &trash1, &trash2, &trash3, &trash4, &trash5, &trash6)) {
+            screen = i;
+            break;
+        }
+    }
 
-	int width = DisplayWidth(display, screen);
-	int height = DisplayHeight(display, screen);
-	ScreenInfo result = {.valid=0, .x=0, .y=0, width, height};
-	if (screen >= 0) {
-		result.valid = 1;
-	}
+    int width = DisplayWidth(display, screen);
+    int height = DisplayHeight(display, screen);
+    ScreenSection result = {.valid=0, .x=0, .y=0, width, height};
+    if (screen >= 0) {
+        result.valid = 1;
+    }
 
-	return result;
+    return result;
+}
+
+ScreenSection getActiveWindow(Display *display, Window *root_window_out) {
+    ScreenSection result = {0};
+    Window focus_return;
+    int revert_to_return;
+    XGetInputFocus(display, &focus_return, &revert_to_return);
+
+    XWindowAttributes attributes;
+    XGetWindowAttributes(display, focus_return, &attributes);
+
+    result.x = attributes.x;
+    result.y = attributes.x;
+    result.width = attributes.width;
+    result.height = attributes.height;
+    result.valid = 1;
+
+    *root_window_out = attributes.root;
+
+    return result;
 }
 
 
 int main(int argc, char *argv[]) {
-    for (int i = 0; i < argc; i++) {
-        //TODO: PARSE ACTIVE WINDOW ARG AND CREATE A FUNCTION THAT RETURNS THE COORDS
-        //ONLY FOR THE ACTIVE WINDOW SO I CAN XGetImage WITH THOSE COORDS AND CREATE A
-        //SCREENSHOT OF THAT WINDOW ONLY
-        printf("argument %d : %s\n", i, argv[i]);
+    bool only_active_window = argc > 1 && strEquals(argv[1], "--active-window");
+
+    Display *display = XOpenDisplay(NULL);
+
+    if (display == NULL) {
+        printf("Could not open display\n");
+        return 1;
     }
 
-	Display *display = XOpenDisplay(NULL);
-
-	if (display == NULL) {
-		printf("Could not open display\n");
-		return 1;
-	}
-
-	Window root_window;
+    Window root_window;
     root_window = DefaultRootWindow(display);
 
     int event_base, error_base;
-	ScreenInfo screen;
+    ScreenSection section;
 
     des_start_debug("Query Extension");
-	if (XRRQueryExtension(display, &event_base, &error_base)) {
+    if (only_active_window) {
+        des_start_debug("Get Active Window");
+        section = getActiveWindow(display, &root_window);
+        des_end_debug("Get Active Window");
+    } else if (XRRQueryExtension(display, &event_base, &error_base)) {
         des_end_debug("Query Extension");
 
         des_start_debug("Get Active Screen");
-		screen = getActiveScreenFromXrandr(display, &root_window);
+        section = getActiveScreenFromXrandr(display, &root_window);
         des_end_debug("Get Active Screen");
     } else {
-		printf("xrandr is not active\n");
-		screen = getActiveScreen(display, &root_window);
-	}
+        printf("xrandr is not active\n");
+        section = getActiveScreen(display, &root_window);
+    }
 
-	if (!screen.valid) {
-		printf("Couldn't get screen\n");
-		return 1;
-	}
+    if (!section.valid) {
+        printf("Couldn't get section\n");
+        return 1;
+    }
 
-	printf("Active screen dimensions %dx%d\n", screen.width, screen.height);
+    printf("Section dimensions %dx%d\n", section.width, section.height);
 
     des_start_debug("Get XImage");
-	XImage *image = XGetImage(display, root_window, screen.x, screen.y, screen.width, screen.height, AllPlanes, ZPixmap);
+    XImage *image = XGetImage(display, root_window, section.x, section.y, section.width, section.height, AllPlanes, ZPixmap);
 
     des_end_debug("Get XImage");
 
-	if (image == NULL) {
-		printf("Could not get image\n");
-		return 1;
-	}
+    if (image == NULL) {
+        printf("Could not get image\n");
+        return 1;
+    }
 
     des_start_debug("Swtich pixels");
-	size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
-	uint *png_data = malloc(memory_size);
+    size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
+    uint *png_data = malloc(memory_size);
 
     if (image->byte_order == LSBFirst) {
         for (int row = 0; row < image->height; ++row) {
@@ -205,5 +241,5 @@ int main(int argc, char *argv[]) {
     des_end_debug("Create Img");
 
     des_print_all_debugs();
-	free(png_data);
+    free(png_data);
 }
