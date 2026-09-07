@@ -4,7 +4,9 @@
 #include <stdbool.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/cursorfont.h>
 #include <dlfcn.h>
+#include <unistd.h>
 #include <time.h>
 //TODO: remove this and load xrandr dynamically
 #include <X11/extensions/Xrandr.h>
@@ -12,12 +14,19 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
 
-#define DES_TIME_DEBUG_IMPLEMENTATION
-#include "lib/des_time_debug.h"
+//#define DES_TIME_DEBUG_IMPLEMENTATION
+//#include "lib/des_time_debug.h"
 
 #define uint64 uint64_t
 #define uint8 uint8_t
 #define uint uint32_t
+
+typedef enum {
+    MODE_INVALID,
+    MODE_ACTIVE_SCREEN,
+    MODE_ACTIVE_WINDOW,
+    MODE_MOUSE_SELECT
+} Mode;
 
 typedef struct {
  bool valid;
@@ -27,7 +36,7 @@ typedef struct {
 
 bool strEquals(char *s1, char *s2) {
 #define MAX_LEN 255
-    des_uint count = 0;
+    uint count = 0;
     while (count++ < MAX_LEN) {
         if ((*s1 == '\0' || *s2 == '\0') || (*s1++ != *s2++)) {
             break;
@@ -58,23 +67,18 @@ int getShiftAmount(unsigned long mask) {
 ScreenSection getActiveScreenFromXrandr(Display *display, Window *root_window) {
     ScreenSection result = {.valid = 0};
 
-    des_start_debug("Get Screens");
     XRRScreenResources *screens = XRRGetScreenResourcesCurrent(display, *root_window);
-    des_end_debug("Get Screens");
 
     if (!screens) {
         printf("Failed to get resources from xrandr\n");
         return result;
     }
 
-    des_start_debug("Query Pointer");
     Window root_return, child_return;
     int root_x, root_y, win_x, win_y;
     uint mask_return;
     if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
-        des_end_debug("Query Pointer");
 
-        des_start_debug("Get Info");
         if (root_x >= 0 && root_y >= 0) {
             for (int i = 0; i < screens->ncrtc; i++) {
                 XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
@@ -94,15 +98,11 @@ ScreenSection getActiveScreenFromXrandr(Display *display, Window *root_window) {
         } else {
             printf("Invalid pointer coordinates returned\n");
         }
-
-        des_end_debug("Get Info");
     } else {
         printf("Failed to query pointer\n");
     }
 
-    des_start_debug("Free Screen");
     XRRFreeScreenResources(screens);
-    des_end_debug("Free Screen");
 
     return result;
 }
@@ -154,14 +154,117 @@ ScreenSection getActiveWindow(Display *display, Window *root_window_out) {
     return result;
 }
 
+ScreenSection getMouseSelection(Display *display, Window *root_window) {
+    ScreenSection result = {0};
+
+    Cursor cursor = XCreateFontCursor(display, XC_crosshair);
+
+    if (XGrabPointer(display, *root_window, 0, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync, GrabModeAsync, None, cursor, CurrentTime)) {
+        fprintf(stderr, "Couldn't grab pointer\n");
+        exit(1);
+    }
+
+    if (XGrabKeyboard(display, *root_window, 0, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess) {
+        fprintf(stderr, "Couldn't grab keyboard\n");
+        exit(1);
+    }
+
+    bool select_started = 0;
+
+    XGCValues gcval;
+    gcval.foreground = XWhitePixel(display, 0);
+    gcval.function = GXxor;
+    gcval.background = XBlackPixel(display, 0);
+    gcval.plane_mask = gcval.background ^ gcval.foreground;
+    gcval.subwindow_mode = IncludeInferiors;
+
+    unsigned long gc_flags = GCFunction | GCForeground | GCSubwindowMode;
+    GC gc = XCreateGC(display, *root_window, gc_flags, &gcval);
+
+    int rect_x = 0, rect_y =0, rect_width = 0, rect_height = 0;
+    XEvent e;
+    while (1) {
+        if (XPending(display)) {
+            XNextEvent(display, &e);
+
+            if (!select_started && e.type == ButtonPress) {
+                select_started = 1;
+
+                Window root_return, child_return;
+                int root_x, root_y, win_x, win_y;
+                uint mask_return;
+                if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+                    result.x = root_x;
+                    result.y = root_y;
+                }
+            }
+
+            if (select_started && e.type == ButtonRelease) {
+                // Clear last rect
+                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
+
+                result.x = rect_x;
+                result.y = rect_y;
+                result.width = rect_width;
+                result.height = rect_height;
+                result.valid = 1;
+                break;
+            }
+
+            if (select_started && e.type == MotionNotify) {
+                // Clear previous rect
+                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
+
+                rect_x = result.x;
+                rect_y = result.y;
+                rect_width = e.xmotion.x - rect_x;
+                rect_height = e.xmotion.y - rect_y;
+
+                if (rect_width < 0) {
+                    rect_x = e.xmotion.x;
+                    rect_width = 0 - rect_width;
+                }
+
+                if (rect_height < 0) {
+                    rect_y = e.xmotion.y;
+                    rect_height = 0 - rect_height;
+                }
+
+                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
+                XFlush(display);
+            }
+
+            if (e.type == KeyPress) {
+                printf("Key pressed canceling...\n");
+                break;
+            }
+        }
+    }
+    XFreeGC(display, gc);
+    XUngrabKeyboard(display, CurrentTime);
+    XUngrabPointer(display, CurrentTime);
+
+    return result;
+}
+
+Mode getMode(char *arg) {
+    if (strEquals(arg, "--window")) {
+        return MODE_ACTIVE_WINDOW;
+    }
+    if (strEquals(arg, "--select")) {
+        return MODE_MOUSE_SELECT;
+    }
+
+    return MODE_INVALID;
+}
 
 int main(int argc, char *argv[]) {
-    bool only_active_window = argc > 1 && strEquals(argv[1], "--active-window");
+    Mode mode = argc > 1 ? getMode(argv[1]) : MODE_ACTIVE_SCREEN;
 
     Display *display = XOpenDisplay(NULL);
 
     if (display == NULL) {
-        printf("Could not open display\n");
+        fprintf(stderr, "Could not open display\n");
         return 1;
     }
 
@@ -171,40 +274,31 @@ int main(int argc, char *argv[]) {
     int event_base, error_base;
     ScreenSection section;
 
-    des_start_debug("Query Extension");
-    if (only_active_window) {
-        des_start_debug("Get Active Window");
+    if (mode == MODE_MOUSE_SELECT) {
+        section = getMouseSelection(display, &root_window);
+    } else if (mode == MODE_ACTIVE_WINDOW) {
         section = getActiveWindow(display, &root_window);
-        des_end_debug("Get Active Window");
     } else if (XRRQueryExtension(display, &event_base, &error_base)) {
-        des_end_debug("Query Extension");
-
-        des_start_debug("Get Active Screen");
         section = getActiveScreenFromXrandr(display, &root_window);
-        des_end_debug("Get Active Screen");
     } else {
         printf("xrandr is not active\n");
         section = getActiveScreen(display, &root_window);
     }
 
     if (!section.valid) {
-        printf("Couldn't get section\n");
+        fprintf(stderr, "Couldn't get screenshot section\n");
         return 1;
     }
 
     printf("Section dimensions %dx%d\n", section.width, section.height);
 
-    des_start_debug("Get XImage");
     XImage *image = XGetImage(display, root_window, section.x, section.y, section.width, section.height, AllPlanes, ZPixmap);
 
-    des_end_debug("Get XImage");
-
     if (image == NULL) {
-        printf("Could not get image\n");
+        fprintf(stderr, "Could not get image\n");
         return 1;
     }
 
-    des_start_debug("Swtich pixels");
     size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
     uint *png_data = malloc(memory_size);
 
@@ -233,13 +327,7 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    des_end_debug("Swtich pixels");
-
-
-    des_start_debug("Create Img");
     stbi_write_png("screenshot.png", image->width, image->height, 4, png_data, image->width * 4);
-    des_end_debug("Create Img");
 
-    des_print_all_debugs();
     free(png_data);
 }
