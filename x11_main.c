@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
@@ -134,22 +135,45 @@ ScreenSection getActiveScreen(Display *display, Window *root_window_out) {
     return result;
 }
 
-ScreenSection getActiveWindow(Display *display, Window *root_window_out) {
+ScreenSection getActiveWindow(Display *display, Window *root_window) {
+    //TODO: test this for child windows
     ScreenSection result = {0};
-    Window focus_return;
-    int revert_to_return;
-    XGetInputFocus(display, &focus_return, &revert_to_return);
+
+    Atom active_window_property = XInternAtom(display, "_NET_ACTIVE_WINDOW", 0);
+    Atom type_return;
+    int format_return;
+    unsigned long nitems_return;
+    unsigned long bytes_after_return;
+    unsigned char *data;
+
+    XGetWindowProperty(
+            display,
+            *root_window,
+            active_window_property,
+            0, 1, 0,
+            XA_WINDOW,
+            &type_return,
+            &format_return,
+            &nitems_return,
+            &bytes_after_return,
+            &data
+    );
+
+    if (data == 0 || type_return != XA_WINDOW) {
+        fprintf(stderr, "Couldn't get active window\n");
+        return result;
+    }
+
+    Window window_return = *((Window *) data);
 
     XWindowAttributes attributes;
-    XGetWindowAttributes(display, focus_return, &attributes);
+    XGetWindowAttributes(display, window_return, &attributes);
+    Window child;
+    XTranslateCoordinates(display, window_return, *root_window, 0, 0, &result.x, &result.y, &child);
 
-    result.x = attributes.x;
-    result.y = attributes.x;
     result.width = attributes.width;
     result.height = attributes.height;
     result.valid = 1;
-
-    *root_window_out = attributes.root;
 
     return result;
 }
