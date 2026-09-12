@@ -23,10 +23,10 @@
 #define uint uint32_t
 
 typedef enum {
-    MODE_INVALID,
     MODE_ACTIVE_SCREEN,
     MODE_ACTIVE_WINDOW,
-    MODE_MOUSE_SELECT
+    MODE_MOUSE_SELECT,
+    MODE_INVALID,
 } Mode;
 
 typedef struct {
@@ -298,15 +298,31 @@ int main(int argc, char *argv[]) {
     int event_base, error_base;
     ScreenSection section;
 
-    if (mode == MODE_MOUSE_SELECT) {
-        section = getMouseSelection(display, &root_window);
-    } else if (mode == MODE_ACTIVE_WINDOW) {
-        section = getActiveWindow(display, &root_window);
-    } else if (XRRQueryExtension(display, &event_base, &error_base)) {
-        section = getActiveScreenFromXrandr(display, &root_window);
-    } else {
-        printf("xrandr is not active\n");
-        section = getActiveScreen(display, &root_window);
+    if (mode == MODE_INVALID) {
+        printf("Invalid capture mode, falling back to active screen mode\n");
+        mode = MODE_ACTIVE_SCREEN;
+    }
+
+    switch (mode) {
+        case MODE_MOUSE_SELECT: {
+            section = getMouseSelection(display, &root_window);
+        } break;
+        case MODE_ACTIVE_WINDOW:
+            section = getActiveWindow(display, &root_window);
+            if (section.valid) {
+                break;
+            }
+            printf("Active window failed falling back to active screen\n");
+            /* FALLTHRU */
+        case MODE_ACTIVE_SCREEN: {
+            if (XRRQueryExtension(display, &event_base, &error_base)) {
+                section = getActiveScreenFromXrandr(display, &root_window);
+            } else {
+                printf("xrandr is not active\n");
+                section = getActiveScreen(display, &root_window);
+            }
+        } break;
+        case MODE_INVALID: {break;}
     }
 
     if (!section.valid) {
