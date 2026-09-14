@@ -12,15 +12,21 @@
 //TODO: remove this and load xrandr dynamically
 #include <X11/extensions/Xrandr.h>
 
+#include "clipboard.h"
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
 
-//#define DES_TIME_DEBUG_IMPLEMENTATION
-//#include "lib/des_time_debug.h"
+#ifdef DEBUG
+    #define DES_TIME_DEBUG_IMPLEMENTATION
+    #include "lib/des_time_debug.h"
+#endif
 
 #define uint64 uint64_t
 #define uint8 uint8_t
 #define uint uint32_t
+
+char *IMAGE_PATH = "/tmp/x11_screenshooter_screenshot.png";
 
 typedef enum {
     MODE_ACTIVE_SCREEN,
@@ -343,14 +349,14 @@ int main(int argc, char *argv[]) {
     uint *png_data = malloc(memory_size);
 
     if (image->byte_order == LSBFirst) {
+        uint r_shift = getShiftAmount(image->red_mask);
+        uint g_shift = getShiftAmount(image->green_mask);
+        uint b_shift = getShiftAmount(image->blue_mask);
+
         for (int row = 0; row < image->height; ++row) {
             for (int col = 0; col < image->width; ++col) {
                 int index = (row * image->width) + col;
                 uint pixel = (((uint *) image->data)[index]);
-
-                uint r_shift = getShiftAmount(image->red_mask);
-                uint g_shift = getShiftAmount(image->green_mask);
-                uint b_shift = getShiftAmount(image->blue_mask);
 
                 uint8 r = (pixel & image->red_mask) >> r_shift;
                 uint8 g = (pixel & image->green_mask) >> g_shift;
@@ -367,7 +373,12 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    stbi_write_png("screenshot.png", image->width, image->height, 4, png_data, image->width * 4);
+    stbi_write_png(IMAGE_PATH, image->width, image->height, 4, png_data, image->width * 4);
 
     free(png_data);
+
+    int pid = fork();
+    if (pid == 0) {
+        setUpClipboard(display, root_window, IMAGE_PATH);
+    }
 }
