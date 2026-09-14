@@ -185,6 +185,8 @@ ScreenSection getActiveWindow(Display *display, Window *root_window) {
 }
 
 ScreenSection getMouseSelection(Display *display, Window *root_window) {
+    //TODO: there is currently a bug where the selection rectangle shows up in the screenshot
+    //I probably need to create a window and capture that instead or something like that
     ScreenSection result = {0};
 
     Cursor cursor = XCreateFontCursor(display, XC_crosshair);
@@ -264,6 +266,9 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
                 XFlush(display);
             }
 
+            //TODO: change this to have a grace period, I added a shortcut with i3
+            //and it seems to stop it because it send the keypress that triggers the command
+            //so I need to add --release
             if (e.type == KeyPress) {
                 printf("Key pressed canceling...\n");
                 break;
