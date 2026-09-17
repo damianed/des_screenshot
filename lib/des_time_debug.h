@@ -25,11 +25,11 @@ typedef struct {
     des_uint64 start, end;
 } des_TimeDebug;
 
-des_TimeDebug debugs[MAX_DEBUGS];
-char *debugs_ids[MAX_DEBUGS];
-des_uint debug_count = 0;
+static des_TimeDebug debugs[MAX_DEBUGS];
+static char *debugs_ids[MAX_DEBUGS];
+static des_uint debug_count = 0;
 
-long long unsigned des_getTimeMs() {
+static long long unsigned des_getTimeMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -37,7 +37,7 @@ long long unsigned des_getTimeMs() {
     return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-des_b32 des_time_debug_strEquals(char *s1, char *s2) {
+static des_b32 des_time_debug_strEquals(char *s1, char *s2) {
 #define MAX_LEN 255
     des_uint count = 0;
     while (count++ < MAX_LEN) {
@@ -53,7 +53,7 @@ des_b32 des_time_debug_strEquals(char *s1, char *s2) {
     return 0;
 }
 
-des_TimeDebug *des_getDebug(char *id) {
+static des_TimeDebug *des_getDebug(char *id) {
     for (des_uint i = 0; i < debug_count; i++) {
         if (des_time_debug_strEquals(debugs_ids[i], id)) {
             return &debugs[i];

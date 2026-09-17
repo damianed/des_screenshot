@@ -10,9 +10,9 @@ struct ImageMemory {
     size_t size;
 };
 
-struct ImageMemory IMAGE = {0};
+static struct ImageMemory IMAGE = {0};
 
-void sendTargets(Display *display, XSelectionRequestEvent *request, Atom targets, Atom png) {
+static void sendTargets(Display *display, XSelectionRequestEvent *request, Atom targets, Atom png) {
     Atom possibleTargets[] = {png, targets};
     XSelectionEvent res;
 
@@ -28,7 +28,7 @@ void sendTargets(Display *display, XSelectionRequestEvent *request, Atom targets
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
 
-void sendPng(Display *display, char *image_path, XSelectionRequestEvent *request, Atom png) {
+static void sendPng(Display *display, char *image_path, XSelectionRequestEvent *request, Atom png) {
     XSelectionEvent res;
     if (IMAGE.data == NULL) {
         FILE *file = fopen(image_path, "rb");
@@ -73,7 +73,7 @@ void sendPng(Display *display, char *image_path, XSelectionRequestEvent *request
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
 
-void sendNo(Display *display, XSelectionRequestEvent *request) {
+static void sendNo(Display *display, XSelectionRequestEvent *request) {
     XSelectionEvent res;
 
     char *atom_name = XGetAtomName(display, request->type);

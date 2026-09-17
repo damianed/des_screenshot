@@ -22,11 +22,18 @@
     #include "lib/des_time_debug.h"
 #endif
 
-#define uint64 uint64_t
-#define uint8 uint8_t
-#define uint uint32_t
+#define global_variable static
+#define local_persist   static
+#define internal        static
 
-char *IMAGE_PATH = "/tmp/x11_screenshooter_screenshot.png";
+#define uint64 uint64_t
+#define uint8  uint8_t
+#define uint   uint32_t
+
+global_variable char *IMAGE_PATH = "/tmp/x11_screenshooter_screenshot.png";
+
+#define BORDERS_COUNT 4
+global_variable Window BORDERS[BORDERS_COUNT];
 
 typedef enum {
     MODE_ACTIVE_SCREEN,
@@ -36,12 +43,12 @@ typedef enum {
 } Mode;
 
 typedef struct {
- bool valid;
- int x, y;
- uint width, height;
+    bool valid;
+    int x, y;
+    uint width, height;
 } ScreenSection;
 
-bool strEquals(char *s1, char *s2) {
+internal bool strEquals(char *s1, char *s2) {
 #define MAX_LEN 255
     uint count = 0;
     while (count++ < MAX_LEN) {
@@ -184,24 +191,91 @@ ScreenSection getActiveWindow(Display *display, Window *root_window) {
     return result;
 }
 
+void initializeBorderWindows(Display *display, Window root, Window BORDERS[4], uint size) {
+    Screen *screen = DefaultScreenOfDisplay(display);
+    XSetWindowAttributes attr;
+    attr.background_pixel = XWhitePixel(display, 0);
+    attr.override_redirect = 1;
+    Atom win_type = XInternAtom(display, "_NET_WM_WINDOW_TYPE", 0);
+    Atom win_dock = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", 0);
+
+    for (uint i = 0; i < size; i++) {
+        BORDERS[i] = XCreateWindow(
+                display, root,
+                0, 0,
+                WidthOfScreen(screen),
+                HeightOfScreen(screen),
+                0, CopyFromParent,
+                InputOutput, CopyFromParent,
+                CWOverrideRedirect | CWBackPixel,
+                &attr
+        );
+
+        XChangeProperty(
+                display, BORDERS[i],
+                win_type, XA_ATOM,
+                32, PropModeReplace,
+                (unsigned char *)&win_dock, 1
+        );
+    }
+}
+
+void drawSelectionBorders(Display *display, Window root, int x, int y, int width, int height) {
+    local_persist int borders_initialized = 0;
+    if (!borders_initialized) {
+        initializeBorderWindows(display, root, BORDERS, BORDERS_COUNT);
+        borders_initialized = 1;
+    }
+
+    if (width == 0 || height == 0) {
+        return;
+    }
+
+    uint line_width = 1;
+    x -= line_width;
+    y -= line_width;
+    width += line_width;
+    height += line_width;
+
+    XRectangle rects[BORDERS_COUNT] = {
+        //left
+        {x, y + line_width,
+        line_width, height - line_width},
+        //top
+        {x, y,
+        width, line_width},
+        //right
+        {x + width, y,
+        line_width, height},
+        //bottom
+        {x, y + height,
+        width + line_width, line_width}
+    };
+
+    for (size_t i = 0; i < BORDERS_COUNT; i++) {
+        XRectangle *rect = rects + i;
+        XMoveResizeWindow(display, BORDERS[i], rect->x, rect->y, rect->width, rect->height);
+        XMapWindow(display, BORDERS[i]);
+    }
+}
+
 ScreenSection getMouseSelection(Display *display, Window *root_window) {
-    //TODO: there is currently a bug where the selection rectangle shows up in the screenshot
-    //I probably need to create a window and capture that instead or something like that
     ScreenSection result = {0};
 
     Cursor cursor = XCreateFontCursor(display, XC_crosshair);
 
-    if (XGrabPointer(display, *root_window, 0, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync, GrabModeAsync, None, cursor, CurrentTime)) {
+    if (XGrabPointer(display, *root_window, 0, ButtonPressMask|ButtonReleaseMask|ButtonMotionMask, GrabModeAsync, GrabModeAsync, None, cursor, CurrentTime)) {
         fprintf(stderr, "Couldn't grab pointer\n");
+        XFreeCursor(display, cursor);
         exit(1);
     }
 
     if (XGrabKeyboard(display, *root_window, 0, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess) {
         fprintf(stderr, "Couldn't grab keyboard\n");
+        XFreeCursor(display, cursor);
+        XUngrabPointer(display, CurrentTime);
         exit(1);
     }
-
-    bool select_started = 0;
 
     XGCValues gcval;
     gcval.foreground = XWhitePixel(display, 0);
@@ -210,43 +284,18 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     gcval.plane_mask = gcval.background ^ gcval.foreground;
     gcval.subwindow_mode = IncludeInferiors;
 
-    unsigned long gc_flags = GCFunction | GCForeground | GCSubwindowMode;
+    unsigned long gc_flags = GCFunction | GCForeground | GCBackground | GCSubwindowMode;
     GC gc = XCreateGC(display, *root_window, gc_flags, &gcval);
 
+    bool select_started = 0;
     int rect_x = 0, rect_y =0, rect_width = 0, rect_height = 0;
     XEvent e;
+
     while (1) {
         if (XPending(display)) {
             XNextEvent(display, &e);
 
-            if (!select_started && e.type == ButtonPress) {
-                select_started = 1;
-
-                Window root_return, child_return;
-                int root_x, root_y, win_x, win_y;
-                uint mask_return;
-                if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
-                    result.x = root_x;
-                    result.y = root_y;
-                }
-            }
-
-            if (select_started && e.type == ButtonRelease) {
-                // Clear last rect
-                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
-
-                result.x = rect_x;
-                result.y = rect_y;
-                result.width = rect_width;
-                result.height = rect_height;
-                result.valid = 1;
-                break;
-            }
-
             if (select_started && e.type == MotionNotify) {
-                // Clear previous rect
-                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
-
                 rect_x = result.x;
                 rect_y = result.y;
                 rect_width = e.xmotion.x - rect_x;
@@ -262,8 +311,33 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
                     rect_height = 0 - rect_height;
                 }
 
-                XDrawRectangle(display, *root_window, gc, rect_x, rect_y, rect_width, rect_height);
-                XFlush(display);
+                printf("Drawing: x: %d, y: %d, w: %d, h: %d\n", rect_x, rect_y, rect_width, rect_height);
+                drawSelectionBorders(
+                        display, *root_window,
+                        rect_x, rect_y,
+                        rect_width, rect_height
+                );
+            }
+
+            if (!select_started && e.type == ButtonPress) {
+                select_started = 1;
+
+                Window root_return, child_return;
+                int root_x, root_y, win_x, win_y;
+                uint mask_return;
+                if (XQueryPointer(display, *root_window, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return)) {
+                    result.x = root_x;
+                    result.y = root_y;
+                }
+            }
+
+            if (select_started && e.type == ButtonRelease) {
+                result.x = rect_x;
+                result.y = rect_y;
+                result.width = rect_width;
+                result.height = rect_height;
+                result.valid = 1;
+                break;
             }
 
             //TODO: change this to have a grace period, I added a shortcut with i3
@@ -275,9 +349,14 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
             }
         }
     }
-    XFreeGC(display, gc);
+
+    XFreeCursor(display, cursor);
     XUngrabKeyboard(display, CurrentTime);
     XUngrabPointer(display, CurrentTime);
+    XFreeGC(display, gc);
+    for (uint i = 0; i < BORDERS_COUNT; i++) {
+        XDestroyWindow(display, BORDERS[i]);
+    }
 
     return result;
 }
@@ -303,8 +382,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    Screen *screen = ScreenOfDisplay(display, DefaultScreen(display));
+    int screen_index = XScreenNumberOfScreen(screen);
     Window root_window;
-    root_window = DefaultRootWindow(display);
+    root_window = RootWindow(display, screen_index);
 
     int event_base, error_base;
     ScreenSection section;
@@ -352,6 +433,10 @@ int main(int argc, char *argv[]) {
 
     size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
     uint *png_data = malloc(memory_size);
+    if (png_data == NULL) {
+        printf("Failed to allocate %zu bytes\n", memory_size);
+        return 1;
+    }
 
     if (image->byte_order == LSBFirst) {
         uint r_shift = getShiftAmount(image->red_mask);
@@ -378,9 +463,11 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+
     stbi_write_png(IMAGE_PATH, image->width, image->height, 4, png_data, image->width * 4);
 
     free(png_data);
+    XDestroyImage(image);
 
     int pid = fork();
     if (pid == 0) {
