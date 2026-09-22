@@ -375,9 +375,7 @@ void parseArgs(int argc, char *argv[], Options *options) {
             StringView sv_arg = strToStringView(arg);
             StringView prefix = strToStringView("--save-dir=");
             if (strViewStartsWith(&sv_arg, &prefix)) {
-                //TODO: this could be faster with a trimchars(uint n) function
-                //since I already know how long prefix is
-                strViewSplit(&sv_arg, '=');
+                strViewTrimCharsLeft(&sv_arg, prefix.size);
                 if (sv_arg.size > 0) {
                     options->save_dir = sv_arg;
                 } else {
@@ -393,7 +391,7 @@ void parseArgs(int argc, char *argv[], Options *options) {
 int main(int argc, char *argv[]) {
     //TODO: use save_dir and copy_to_clipboard options instead of just storing them
     //Default options
-    Options options = {strToStringView("./"), MODE_ACTIVE_SCREEN, 0};
+    Options options = {(StringView){"./", 2}, MODE_ACTIVE_SCREEN, 0};
     parseArgs(argc, argv, &options);
 
     Display *display = XOpenDisplay(NULL);

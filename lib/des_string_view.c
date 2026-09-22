@@ -82,8 +82,24 @@ StringView strViewSplit(StringView *s, char separator)  {
     }
 
     char *newData = s->data;
-    s->data += count + 1;
-    s->size -= count + 1;
+    strViewTrimCharsLeft(s, count + 1);
 
     return (StringView) {newData, count};
+}
+
+void strViewTrimCharsLeft(StringView *s, int n) {
+    if (n > (signed int)s->size) {
+        n = s->size;
+    }
+
+    s->data += n;
+    s->size -= n;
+}
+
+void strViewTrimCharsRight(StringView *s, int n) {
+    if (n > (signed int)s->size) {
+        n = s->size;
+    }
+
+    s->size -= n;
 }

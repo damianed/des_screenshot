@@ -5,10 +5,14 @@ typedef struct {
     unsigned int size;
 } StringView;
 
-StringView strToStringView(char  *s);
+StringView strToStringView(char *s);
+
 bool strEquals(char *s1, char *s2);
 bool strViewEquals(StringView *s1, StringView *s2);
 bool strViewStartsWith(StringView *s, StringView *subs);
+
+void strViewTrimCharsLeft(StringView *s, int n);
+void strViewTrimCharsRight(StringView *s, int n);
 
 /*
  * Returns first section of resulting split and makes param "s" the second section
