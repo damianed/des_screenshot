@@ -13,6 +13,7 @@
 #include <X11/extensions/Xrandr.h>
 
 #include "clipboard.h"
+#include "lib/des_string_view.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
@@ -27,8 +28,8 @@
 #define internal        static
 
 #define uint64 uint64_t
-#define uint8  uint8_t
 #define uint   uint32_t
+#define uint8  uint8_t
 
 global_variable char *IMAGE_PATH = "/tmp/x11_screenshooter_screenshot.png";
 
@@ -43,26 +44,16 @@ typedef enum {
 } Mode;
 
 typedef struct {
+    StringView save_dir;
+    Mode mode;
+    bool copy_to_clipboard;
+} Options;
+
+typedef struct {
     bool valid;
     int x, y;
     uint width, height;
 } ScreenSection;
-
-internal bool strEquals(char *s1, char *s2) {
-#define MAX_LEN 255
-    uint count = 0;
-    while (count++ < MAX_LEN) {
-        if ((*s1 == '\0' || *s2 == '\0') || (*s1++ != *s2++)) {
-            break;
-        }
-    }
-
-    if (*s1 == '\0' && *s2 == '\0') {
-        return 1;
-    }
-
-    return 0;
-}
 
 int getShiftAmount(unsigned long mask) {
     if (mask == 0) {
@@ -311,7 +302,6 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
                     rect_height = 0 - rect_height;
                 }
 
-                printf("Drawing: x: %d, y: %d, w: %d, h: %d\n", rect_x, rect_y, rect_width, rect_height);
                 drawSelectionBorders(
                         display, *root_window,
                         rect_x, rect_y,
@@ -354,7 +344,7 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     XUngrabKeyboard(display, CurrentTime);
     XUngrabPointer(display, CurrentTime);
     XFreeGC(display, gc);
-    for (uint i = 0; i < BORDERS_COUNT; i++) {
+    for (int i = 0; i < BORDERS_COUNT; i++) {
         XDestroyWindow(display, BORDERS[i]);
     }
 
@@ -372,8 +362,39 @@ Mode getMode(char *arg) {
     return MODE_INVALID;
 }
 
+void parseArgs(int argc, char *argv[], Options *options) {
+    for (int i = 1; i < argc; i++) {
+        char *arg = argv[i];
+        if (strEquals(arg, "--window") || strEquals(arg, "-w")) {
+            options->mode = MODE_ACTIVE_WINDOW;
+        } else if (strEquals(arg, "--select") || strEquals(arg, "-s")) {
+            options->mode = MODE_MOUSE_SELECT;
+        } else if (strEquals(arg, "--cliplboard") || strEquals(arg, "-c")) {
+            options->copy_to_clipboard = 1;
+        } else {
+            StringView sv_arg = strToStringView(arg);
+            StringView prefix = strToStringView("--save-dir=");
+            if (strViewStartsWith(&sv_arg, &prefix)) {
+                //TODO: this could be faster with a trimchars(uint n) function
+                //since I already know how long prefix is
+                strViewSplit(&sv_arg, '=');
+                if (sv_arg.size > 0) {
+                    options->save_dir = sv_arg;
+                } else {
+                    //TODO: show wrong usage message
+                }
+            } else {
+                printf("Ignoring invalid argument %s\n", arg);
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
-    Mode mode = argc > 1 ? getMode(argv[1]) : MODE_ACTIVE_SCREEN;
+    //TODO: use save_dir and copy_to_clipboard options instead of just storing them
+    //Default options
+    Options options = {strToStringView("./"), MODE_ACTIVE_SCREEN, 0};
+    parseArgs(argc, argv, &options);
 
     Display *display = XOpenDisplay(NULL);
 
@@ -390,12 +411,12 @@ int main(int argc, char *argv[]) {
     int event_base, error_base;
     ScreenSection section;
 
-    if (mode == MODE_INVALID) {
+    if (options.mode == MODE_INVALID) {
         printf("Invalid capture mode, falling back to active screen mode\n");
-        mode = MODE_ACTIVE_SCREEN;
+        options.mode = MODE_ACTIVE_SCREEN;
     }
 
-    switch (mode) {
+    switch (options.mode) {
         case MODE_MOUSE_SELECT: {
             section = getMouseSelection(display, &root_window);
         } break;
