@@ -24,8 +24,12 @@ StringView strToStringView(char *s) {
 bool strEquals(char *s1, char *s2) {
     unsigned int count = 0;
     while (count++ < MAX_ITERATION) {
-        if ((*s1 == '\0' || *s2 == '\0') || (*s1++ != *s2++)) {
+        if ((*s1 == '\0' || *s2 == '\0')) {
             break;
+        }
+
+        if (*s1++ != *s2++) {
+            return 0;
         }
     }
 

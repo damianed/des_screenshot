@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -30,8 +31,6 @@
 #define uint64 uint64_t
 #define uint   uint32_t
 #define uint8  uint8_t
-
-global_variable char *IMAGE_PATH = "/tmp/x11_screenshooter_screenshot.png";
 
 #define BORDERS_COUNT 4
 global_variable Window BORDERS[BORDERS_COUNT];
@@ -351,15 +350,14 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     return result;
 }
 
-Mode getMode(char *arg) {
-    if (strEquals(arg, "--window")) {
-        return MODE_ACTIVE_WINDOW;
-    }
-    if (strEquals(arg, "--select")) {
-        return MODE_MOUSE_SELECT;
-    }
+void createFileName(char *format, char *buffer, int max_size) {
+    time_t now;
+    struct tm *tm_info;
 
-    return MODE_INVALID;
+    time(&now);
+    tm_info = localtime(&now);
+
+    strftime(buffer, max_size, format, tm_info);
 }
 
 void parseArgs(int argc, char *argv[], Options *options) {
@@ -369,7 +367,7 @@ void parseArgs(int argc, char *argv[], Options *options) {
             options->mode = MODE_ACTIVE_WINDOW;
         } else if (strEquals(arg, "--select") || strEquals(arg, "-s")) {
             options->mode = MODE_MOUSE_SELECT;
-        } else if (strEquals(arg, "--cliplboard") || strEquals(arg, "-c")) {
+        } else if (strEquals(arg, "--clipboard") || strEquals(arg, "-c")) {
             options->copy_to_clipboard = 1;
         } else {
             StringView sv_arg = strToStringView(arg);
@@ -379,7 +377,7 @@ void parseArgs(int argc, char *argv[], Options *options) {
                 if (sv_arg.size > 0) {
                     options->save_dir = sv_arg;
                 } else {
-                    //TODO: show wrong usage message
+                    fprintf(stderr, "Couldn't parse --save-dir value, saving to current directory\n");
                 }
             } else {
                 printf("Ignoring invalid argument %s\n", arg);
@@ -483,13 +481,30 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    stbi_write_png(IMAGE_PATH, image->width, image->height, 4, png_data, image->width * 4);
+
+#define FULL_PATH_BUFFER_SIZE 1024
+    char *file_name_buffer[FULL_PATH_BUFFER_SIZE];
+    if (options.save_dir.size > 1 && options.save_dir.data[options.save_dir.size - 1] == '/') {
+        options.save_dir.data[--options.save_dir.size] = '\0';
+    }
+    strncpy((char *)file_name_buffer, options.save_dir.data, FULL_PATH_BUFFER_SIZE);
+    createFileName("/des_screenshot_%Y_%m_%d-%H_%M_%S.png", ((char *)file_name_buffer) + options.save_dir.size, FULL_PATH_BUFFER_SIZE - options.save_dir.size);
+
+    bool file_created = 0;
+    if (access(options.save_dir.data, W_OK) == 0) {
+        stbi_write_png((char *)file_name_buffer, image->width, image->height, 4, png_data, image->width * 4);
+        file_created = 1;
+    } else {
+        fprintf(stderr, "Write access denied to path %s\n", options.save_dir.data);
+    }
 
     free(png_data);
     XDestroyImage(image);
 
-    int pid = fork();
-    if (pid == 0) {
-        setUpClipboard(display, root_window, IMAGE_PATH);
+    if (file_created && options.copy_to_clipboard) {
+        int pid = fork();
+        if (pid == 0) {
+            setUpClipboard(display, root_window, (char *)file_name_buffer);
+        }
     }
 }
