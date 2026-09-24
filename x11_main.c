@@ -43,15 +43,17 @@ typedef enum {
 } Mode;
 
 typedef struct {
-    StringView save_dir;
-    Mode mode;
-    bool copy_to_clipboard;
+    StringView  save_dir;
+    Mode        mode;
+    bool        copy_to_clipboard;
 } Options;
 
 typedef struct {
-    bool valid;
-    int x, y;
-    uint width, height;
+    bool    valid;
+    int     x;
+    int     y;
+    uint    width;
+    uint    height;
 } ScreenSection;
 
 int getShiftAmount(unsigned long mask) {
@@ -91,10 +93,10 @@ ScreenSection getActiveScreenFromXrandr(Display *display, Window *root_window) {
                     (root_x >= info->x && (uint) root_x < info->x + (uint) info->width) &&
                     (root_y >= info->y && (uint) root_y < info->y + (uint) info->height)
                 ) {
-                    result.valid = 1;
-                    result.x = info->x;
-                    result.y = info->y;
-                    result.width = info->width;
+                    result.valid  = 1;
+                    result.x      = info->x;
+                    result.y      = info->y;
+                    result.width  = info->width;
                     result.height = info->height;
                     break;
                 }
@@ -128,8 +130,8 @@ ScreenSection getActiveScreen(Display *display, Window *root_window_out) {
         }
     }
 
-    int width = DisplayWidth(display, screen);
-    int height = DisplayHeight(display, screen);
+    int width            = DisplayWidth(display, screen);
+    int height           = DisplayHeight(display, screen);
     ScreenSection result = {.valid=0, .x=0, .y=0, width, height};
     if (screen >= 0) {
         result.valid = 1;
@@ -174,20 +176,20 @@ ScreenSection getActiveWindow(Display *display, Window *root_window) {
     Window child;
     XTranslateCoordinates(display, window_return, *root_window, 0, 0, &result.x, &result.y, &child);
 
-    result.width = attributes.width;
+    result.width  = attributes.width;
     result.height = attributes.height;
-    result.valid = 1;
+    result.valid  = 1;
 
     return result;
 }
 
 void initializeBorderWindows(Display *display, Window root, Window BORDERS[4], uint size) {
-    Screen *screen = DefaultScreenOfDisplay(display);
     XSetWindowAttributes attr;
-    attr.background_pixel = XWhitePixel(display, 0);
-    attr.override_redirect = 1;
-    Atom win_type = XInternAtom(display, "_NET_WM_WINDOW_TYPE", 0);
-    Atom win_dock = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", 0);
+    Screen *screen              = DefaultScreenOfDisplay(display);
+    attr.background_pixel       = XWhitePixel(display, 0);
+    attr.override_redirect      = 1;
+    Atom win_type               = XInternAtom(display, "_NET_WM_WINDOW_TYPE", 0);
+    Atom win_dock               = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", 0);
 
     for (uint i = 0; i < size; i++) {
         BORDERS[i] = XCreateWindow(
@@ -221,11 +223,11 @@ void drawSelectionBorders(Display *display, Window root, int x, int y, int width
         return;
     }
 
-    uint line_width = 1;
-    x -= line_width;
-    y -= line_width;
-    width += line_width;
-    height += line_width;
+    uint line_width  =  1;
+    x               -= line_width;
+    y               -= line_width;
+    width           += line_width;
+    height          += line_width;
 
     XRectangle rects[BORDERS_COUNT] = {
         //left
@@ -268,17 +270,20 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     }
 
     XGCValues gcval;
-    gcval.foreground = XWhitePixel(display, 0);
-    gcval.function = GXxor;
-    gcval.background = XBlackPixel(display, 0);
-    gcval.plane_mask = gcval.background ^ gcval.foreground;
+    gcval.foreground     = XWhitePixel(display, 0);
+    gcval.function       = GXxor;
+    gcval.background     = XBlackPixel(display, 0);
+    gcval.plane_mask     = gcval.background ^ gcval.foreground;
     gcval.subwindow_mode = IncludeInferiors;
 
     unsigned long gc_flags = GCFunction | GCForeground | GCBackground | GCSubwindowMode;
     GC gc = XCreateGC(display, *root_window, gc_flags, &gcval);
 
     bool select_started = 0;
-    int rect_x = 0, rect_y =0, rect_width = 0, rect_height = 0;
+    int rect_x          = 0;
+    int rect_y          = 0;
+    int rect_width      = 0;
+    int rect_height     = 0;
     XEvent e;
 
     while (1) {
@@ -286,18 +291,18 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
             XNextEvent(display, &e);
 
             if (select_started && e.type == MotionNotify) {
-                rect_x = result.x;
-                rect_y = result.y;
-                rect_width = e.xmotion.x - rect_x;
+                rect_x      = result.x;
+                rect_y      = result.y;
+                rect_width  = e.xmotion.x - rect_x;
                 rect_height = e.xmotion.y - rect_y;
 
                 if (rect_width < 0) {
-                    rect_x = e.xmotion.x;
+                    rect_x     = e.xmotion.x;
                     rect_width = 0 - rect_width;
                 }
 
                 if (rect_height < 0) {
-                    rect_y = e.xmotion.y;
+                    rect_y      = e.xmotion.y;
                     rect_height = 0 - rect_height;
                 }
 
@@ -321,11 +326,11 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
             }
 
             if (select_started && e.type == ButtonRelease) {
-                result.x = rect_x;
-                result.y = rect_y;
-                result.width = rect_width;
+                result.x      = rect_x;
+                result.y      = rect_y;
+                result.width  = rect_width;
                 result.height = rect_height;
-                result.valid = 1;
+                result.valid  = 1;
                 break;
             }
 
@@ -387,7 +392,6 @@ void parseArgs(int argc, char *argv[], Options *options) {
 }
 
 int main(int argc, char *argv[]) {
-    //TODO: use save_dir and copy_to_clipboard options instead of just storing them
     //Default options
     Options options = {(StringView){"./", 2}, MODE_ACTIVE_SCREEN, 0};
     parseArgs(argc, argv, &options);
@@ -399,8 +403,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    Screen *screen = ScreenOfDisplay(display, DefaultScreen(display));
-    int screen_index = XScreenNumberOfScreen(screen);
+    Screen *screen     = ScreenOfDisplay(display, DefaultScreen(display));
+    int screen_index   = XScreenNumberOfScreen(screen);
     Window root_window;
     root_window = RootWindow(display, screen_index);
 
@@ -465,9 +469,9 @@ int main(int argc, char *argv[]) {
                 int index = (row * image->width) + col;
                 uint pixel = (((uint *) image->data)[index]);
 
-                uint8 r = (pixel & image->red_mask) >> r_shift;
+                uint8 r = (pixel & image->red_mask)   >> r_shift;
                 uint8 g = (pixel & image->green_mask) >> g_shift;
-                uint8 b = (pixel & image->blue_mask) >> b_shift;
+                uint8 b = (pixel & image->blue_mask)  >> b_shift;
 
                 pixel = 0xff000000; // reset to 0 except for alpha
 

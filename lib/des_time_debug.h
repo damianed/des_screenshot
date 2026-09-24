@@ -18,16 +18,17 @@ void des_clear_debugs();
 #ifdef DES_TIME_DEBUG_IMPLEMENTATION
 
 #define des_uint64 long long unsigned
-#define des_uint unsigned int
-#define des_b32 des_uint
+#define des_uint   unsigned int
+#define des_b32    des_uint
 
 typedef struct {
-    des_uint64 start, end;
+    des_uint64 start;
+    des_uint64 end;
 } des_TimeDebug;
 
-static des_TimeDebug debugs[MAX_DEBUGS];
-static char *debugs_ids[MAX_DEBUGS];
-static des_uint debug_count = 0;
+static des_TimeDebug  debugs    [MAX_DEBUGS];
+static char          *debugs_ids[MAX_DEBUGS];
+static des_uint       debug_count        = 0;
 
 static long long unsigned des_getTimeMs() {
     struct timespec ts;
@@ -64,12 +65,12 @@ static des_TimeDebug *des_getDebug(char *id) {
 }
 
 void des_start_debug(char *id) {
-    des_uint64 start = des_getTimeMs();
+    des_uint64 start     = des_getTimeMs();
     des_TimeDebug *debug = des_getDebug(id);
     if (!debug) {
-        debugs[debug_count] = (des_TimeDebug) {0, 0};
+        debugs[debug_count]     = (des_TimeDebug) {0, 0};
         debugs_ids[debug_count] = id;
-        debug = &debugs[debug_count];
+        debug                   = &debugs[debug_count];
 
         debug_count++;
     }
@@ -78,7 +79,7 @@ void des_start_debug(char *id) {
 }
 
 void des_end_debug(char *id) {
-    des_uint64 end = des_getTimeMs(id);
+    des_uint64 end       = des_getTimeMs(id);
     des_TimeDebug *debug = des_getDebug(id);
 
     if (debug) {
@@ -97,7 +98,7 @@ void des_print_all_debugs() {
 
 void des_print_debug(char *id) {
     des_TimeDebug *debug = des_getDebug(id);
-    des_uint64 result = debug->end - debug->start;
+    des_uint64 result    = debug->end - debug->start;
     printf("DEBUG: TIME TAKEN BY %s:     %llums\n", id, result);
 }
 

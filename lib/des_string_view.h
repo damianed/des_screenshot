@@ -1,8 +1,8 @@
 #include <stdbool.h>
 
 typedef struct {
-    char *data;
-    unsigned int size;
+    char         *data;
+    unsigned int  size;
 } StringView;
 
 StringView strToStringView(char *s);

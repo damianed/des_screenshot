@@ -7,7 +7,7 @@
 
 struct ImageMemory {
     unsigned char *data;
-    size_t size;
+    size_t         size;
 };
 
 static struct ImageMemory IMAGE = {0};
@@ -18,12 +18,12 @@ static void sendTargets(Display *display, XSelectionRequestEvent *request, Atom 
 
     XChangeProperty(display, request->requestor, request->property, XA_ATOM, 32, PropModeReplace, (unsigned char *) possibleTargets, sizeof(possibleTargets) / sizeof(Atom));
 
-    res.type = SelectionNotify;
+    res.type      = SelectionNotify;
     res.requestor = request->requestor;
     res.selection = request->selection;
-    res.target = request->target;
-    res.property = request->property;
-    res.time = request->time;
+    res.target    = request->target;
+    res.property  = request->property;
+    res.time      = request->time;
 
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
@@ -63,12 +63,12 @@ static void sendPng(Display *display, char *image_path, XSelectionRequestEvent *
 
     XChangeProperty(display, request->requestor, request->property, png, 8, PropModeReplace, IMAGE.data, IMAGE.size);
 
-    res.type = SelectionNotify;
+    res.type      = SelectionNotify;
     res.requestor = request->requestor;
     res.selection = request->selection;
-    res.target = request->target;
-    res.property = request->property;
-    res.time = request->time;
+    res.target    = request->target;
+    res.property  = request->property;
+    res.time      = request->time;
 
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
@@ -81,22 +81,22 @@ static void sendNo(Display *display, XSelectionRequestEvent *request) {
         XFree(atom_name);
     }
 
-    res.type = SelectionNotify;
+    res.type      = SelectionNotify;
     res.requestor = request->requestor;
     res.selection = request->selection;
-    res.target = request->target;
-    res.property = None;
-    res.time = request->time;
+    res.target    = request->target;
+    res.property  = None;
+    res.time      = request->time;
 
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
 
 void setUpClipboard(Display *display, Window root, char *image_path) {
-    Window window = XCreateSimpleWindow(display, root, -10, -10, 1, 1, 0, 0, 0);
+    Window window  = XCreateSimpleWindow(display, root, -10, -10, 1, 1, 0, 0, 0);
 
     Atom clipboard = XInternAtom(display, "CLIPBOARD", 0);
-    Atom targets = XInternAtom(display, "TARGETS", 0);
-    Atom png = XInternAtom(display, "image/png", 0);
+    Atom targets   = XInternAtom(display, "TARGETS", 0);
+    Atom png       = XInternAtom(display, "image/png", 0);
 
     XSetSelectionOwner(display, clipboard, window, CurrentTime);
 
