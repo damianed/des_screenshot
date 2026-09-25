@@ -35,6 +35,17 @@
 #define BORDERS_COUNT 4
 global_variable Window BORDERS[BORDERS_COUNT];
 
+global_variable char *HELP_OPTION_ARG            = "--help";
+global_variable char *HELP_OPTION_ARG_SHORT      = "-h";
+global_variable char *SCREEN_OPTION_ARG          = "--screen";
+global_variable char *WINDOW_OPTION_ARG          = "--window";
+global_variable char *WINDOW_OPTION_ARG_SHORT    = "-w";
+global_variable char *SELECT_OPTION_ARG          = "--select";
+global_variable char *SELECT_OPTION_ARG_SHORT    = "-s";
+global_variable char *CLIPBOARD_OPTION_ARG       = "--clipboard";
+global_variable char *CLIPBOARD_OPTION_ARG_SHORT = "-c";
+global_variable char *SAVE_DIR_OPTION_ARG        = "--save-dir=";
+
 typedef enum {
     MODE_ACTIVE_SCREEN,
     MODE_ACTIVE_WINDOW,
@@ -365,24 +376,41 @@ void createFileName(char *format, char *buffer, int max_size) {
     strftime(buffer, max_size, format, tm_info);
 }
 
+void printHelpAndExit() {
+    printf("Usage: des_screenshot [OPTIONS...]\n");
+    printf("A list of options with a brief description is given below.\n");
+    printf("\n");
+    printf("%s, %s               ""Displays help and exits.\n",                                                HELP_OPTION_ARG_SHORT,      HELP_OPTION_ARG     );
+    printf("    %s             "  "Takes a screenshot of the active screen; this is the default mode.\n",      SCREEN_OPTION_ARG                               );
+    printf("%s, %s             "  "Takes a screenshot of the active window.\n",                                WINDOW_OPTION_ARG_SHORT,    WINDOW_OPTION_ARG   );
+    printf("%s, %s             "  "Allows mouse selection of the area to take a screenshot of.\n",             SELECT_OPTION_ARG_SHORT,    SELECT_OPTION_ARG   );
+    printf("%s, %s          "     "Saves the screenshot to the clipboard.\n",                                  CLIPBOARD_OPTION_ARG_SHORT, CLIPBOARD_OPTION_ARG);
+    printf("    %s          "     "Directory to save the screenshot to; defaults to the current directory.\n", SAVE_DIR_OPTION_ARG                             );
+    exit(1);
+}
+
 void parseArgs(int argc, char *argv[], Options *options) {
     for (int i = 1; i < argc; i++) {
         char *arg = argv[i];
-        if (strEquals(arg, "--window") || strEquals(arg, "-w")) {
+        if(strEquals(arg, HELP_OPTION_ARG)              || strEquals(arg, HELP_OPTION_ARG_SHORT)) {
+            printHelpAndExit();
+        } else if (strEquals(arg, WINDOW_OPTION_ARG)    || strEquals(arg, WINDOW_OPTION_ARG_SHORT)) {
             options->mode = MODE_ACTIVE_WINDOW;
-        } else if (strEquals(arg, "--select") || strEquals(arg, "-s")) {
+        } else if (strEquals(arg, SELECT_OPTION_ARG)    || strEquals(arg, SELECT_OPTION_ARG_SHORT)) {
             options->mode = MODE_MOUSE_SELECT;
-        } else if (strEquals(arg, "--clipboard") || strEquals(arg, "-c")) {
+        } else if (strEquals(arg, CLIPBOARD_OPTION_ARG) || strEquals(arg, CLIPBOARD_OPTION_ARG_SHORT)) {
             options->copy_to_clipboard = 1;
+        } else if (strEquals(arg, SCREEN_OPTION_ARG)) {
+            options->mode = MODE_ACTIVE_SCREEN;
         } else {
             StringView sv_arg = strToStringView(arg);
-            StringView prefix = strToStringView("--save-dir=");
+            StringView prefix = strToStringView(SAVE_DIR_OPTION_ARG);
             if (strViewStartsWith(&sv_arg, &prefix)) {
                 strViewTrimCharsLeft(&sv_arg, prefix.size);
                 if (sv_arg.size > 0) {
                     options->save_dir = sv_arg;
                 } else {
-                    fprintf(stderr, "Couldn't parse --save-dir value, saving to current directory\n");
+                    fprintf(stderr, "Couldn't parse %s value, saving to current directory\n", SAVE_DIR_OPTION_ARG);
                 }
             } else {
                 printf("Ignoring invalid argument %s\n", arg);
@@ -393,7 +421,7 @@ void parseArgs(int argc, char *argv[], Options *options) {
 
 int main(int argc, char *argv[]) {
     //Default options
-    Options options = {(StringView){"./", 2}, MODE_ACTIVE_SCREEN, 0};
+    Options options = {{0}, MODE_ACTIVE_SCREEN, 0};
     parseArgs(argc, argv, &options);
 
     Display *display = XOpenDisplay(NULL);
@@ -443,8 +471,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Section dimensions %dx%d\n", section.width, section.height);
-
     XImage *image = XGetImage(display, root_window, section.x, section.y, section.width, section.height, AllPlanes, ZPixmap);
 
     if (image == NULL) {
@@ -485,11 +511,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
-
 #define FULL_PATH_BUFFER_SIZE 1024
     char *file_name_buffer[FULL_PATH_BUFFER_SIZE];
     if (options.save_dir.size > 1 && options.save_dir.data[options.save_dir.size - 1] == '/') {
         options.save_dir.data[--options.save_dir.size] = '\0';
+    }
+    if (options.save_dir.size == 0) {
+        options.save_dir = (StringView) {"./", 2};
     }
     strncpy((char *)file_name_buffer, options.save_dir.data, FULL_PATH_BUFFER_SIZE);
     createFileName("/des_screenshot_%Y_%m_%d-%H_%M_%S.png", ((char *)file_name_buffer) + options.save_dir.size, FULL_PATH_BUFFER_SIZE - options.save_dir.size);
@@ -499,7 +527,11 @@ int main(int argc, char *argv[]) {
         stbi_write_png((char *)file_name_buffer, image->width, image->height, 4, png_data, image->width * 4);
         file_created = 1;
     } else {
-        fprintf(stderr, "Write access denied to path %s\n", options.save_dir.data);
+        if (access(options.save_dir.data, F_OK) == 0) {
+            fprintf(stderr, "Unable to write to path %s. Insufficient permissions\n", options.save_dir.data);
+        } else {
+            fprintf(stderr, "Path %s doesn't exist.\n", options.save_dir.data);
+        }
     }
 
     free(png_data);
