@@ -437,7 +437,7 @@ int main(int argc, char *argv[]) {
     root_window = RootWindow(display, screen_index);
 
     int event_base, error_base;
-    ScreenSection section;
+    ScreenSection section = {0};
 
     if (options.mode == MODE_INVALID) {
         printf("Invalid capture mode, falling back to active screen mode\n");
