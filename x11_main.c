@@ -19,6 +19,9 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/stb_image_write.h"
 
+#define MINIAUDIO_IMPLEMENTATION
+#include "lib/miniaudio.h"
+
 #ifdef DEBUG
     #define DES_TIME_DEBUG_IMPLEMENTATION
     #include "lib/des_time_debug.h"
@@ -376,6 +379,44 @@ void createFileName(char *format, char *buffer, int max_size) {
     strftime(buffer, max_size, format, tm_info);
 }
 
+ma_result initAudioFile(ma_engine *engine, ma_sound *sound) {
+    //TODO: make this init audio from the array screenshot_sound_wav.c instead of file
+    char *audio_path = "screenshot-sound.wav";
+    ma_result result = ma_engine_init(0, engine);
+    if (result != MA_SUCCESS) {
+        fprintf(stderr, "Unable to play sound \n");
+        return result;
+    }
+
+    result = ma_sound_init_from_file(engine, audio_path, MA_SOUND_FLAG_ASYNC, NULL, NULL, sound);
+    if (result != MA_SUCCESS) {
+        fprintf(stderr, "uanble to initialize sound %s", audio_path);
+        return result;
+    }
+
+    return result;
+}
+
+ma_result playScreenshotAudio(ma_engine *engine, ma_sound *sound, bool keepAlive) {
+    ma_result result = ma_sound_start(sound);
+
+    if (result != MA_SUCCESS) {
+        fprintf(stderr, "unable to start audio\n");
+        return result;
+    }
+
+    while(!ma_sound_at_end(sound)) {
+        ma_sleep(10);
+    }
+
+    if (!keepAlive) {
+        ma_engine_uninit(engine);
+        ma_sound_uninit(sound);
+    }
+
+    return result;
+}
+
 void printHelpAndExit() {
     printf("Usage: des_screenshot [OPTIONS...]\n");
     printf("A list of options with a brief description is given below.\n");
@@ -423,6 +464,10 @@ int main(int argc, char *argv[]) {
     //Default options
     Options options = {{0}, MODE_ACTIVE_SCREEN, 0};
     parseArgs(argc, argv, &options);
+    //TODO: add paramenter for silenceing screenshot
+    ma_engine audio_engine;
+    ma_sound audio_sound;
+    initAudioFile(&audio_engine, &audio_sound);
 
     Display *display = XOpenDisplay(NULL);
 
@@ -533,14 +578,16 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Path %s doesn't exist.\n", options.save_dir.data);
         }
     }
-
     free(png_data);
     XDestroyImage(image);
 
-    if (file_created && options.copy_to_clipboard) {
-        int pid = fork();
-        if (pid == 0) {
-            setUpClipboard(display, root_window, (char *)file_name_buffer);
+    if (file_created) {
+        if (options.copy_to_clipboard) {
+            int pid = fork();
+            if (pid == 0) {
+                setUpClipboard(display, root_window, (char *)file_name_buffer);
+            }
         }
+        playScreenshotAudio(&audio_engine, &audio_sound, 0);
     }
 }
