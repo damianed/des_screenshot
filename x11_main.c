@@ -26,6 +26,7 @@
     #define DES_TIME_DEBUG_IMPLEMENTATION
     #include "lib/des_time_debug.h"
 #endif
+#include "screenshot_sound_wav.c"
 
 #define global_variable static
 #define local_persist   static
@@ -379,18 +380,25 @@ void createFileName(char *format, char *buffer, int max_size) {
     strftime(buffer, max_size, format, tm_info);
 }
 
-ma_result initAudioFile(ma_engine *engine, ma_sound *sound) {
-    //TODO: make this init audio from the array screenshot_sound_wav.c instead of file
-    char *audio_path = "screenshot-sound.wav";
-    ma_result result = ma_engine_init(0, engine);
+ma_result initAudio(ma_engine *engine, ma_sound *sound, unsigned char *data, int data_size) {
+    ma_result result;
+    ma_decoder decoder;
+    ma_decoder_config decoder_config = {0};
+    result = ma_engine_init(0, engine);
     if (result != MA_SUCCESS) {
         fprintf(stderr, "Unable to play sound \n");
         return result;
     }
 
-    result = ma_sound_init_from_file(engine, audio_path, MA_SOUND_FLAG_ASYNC, NULL, NULL, sound);
+    result = ma_decoder_init_memory(data, data_size, &decoder_config, &decoder);
     if (result != MA_SUCCESS) {
-        fprintf(stderr, "uanble to initialize sound %s", audio_path);
+        fprintf(stderr, "unable to initialize decoder ma_result %d", result);
+        return result;
+    }
+
+    result = ma_sound_init_from_data_source(engine, decoder.pBackend, MA_SOUND_FLAG_ASYNC, 0, sound);
+    if (result != MA_SUCCESS) {
+        fprintf(stderr, "unable to initialize sound ma_result %d", result);
         return result;
     }
 
@@ -467,7 +475,7 @@ int main(int argc, char *argv[]) {
     //TODO: add paramenter for silenceing screenshot
     ma_engine audio_engine;
     ma_sound audio_sound;
-    initAudioFile(&audio_engine, &audio_sound);
+    initAudio(&audio_engine, &audio_sound, screenshot_sound_wav, screenshot_sound_wav_len);
 
     Display *display = XOpenDisplay(NULL);
 
