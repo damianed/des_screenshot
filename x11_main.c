@@ -10,6 +10,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <time.h>
+#include <pulse/simple.h>
 //TODO: remove this and load xrandr dynamically
 #include <X11/extensions/Xrandr.h>
 
@@ -23,6 +24,7 @@
     #define DES_TIME_DEBUG_IMPLEMENTATION
     #include "lib/des_time_debug.h"
 #endif
+#include "screenshot_sound_wav.c"
 
 #define global_variable static
 #define local_persist   static
@@ -44,6 +46,8 @@ global_variable char *SELECT_OPTION_ARG          = "--select";
 global_variable char *SELECT_OPTION_ARG_SHORT    = "-s";
 global_variable char *CLIPBOARD_OPTION_ARG       = "--clipboard";
 global_variable char *CLIPBOARD_OPTION_ARG_SHORT = "-c";
+global_variable char *SILENT_ARG                 = "--silent";
+global_variable char *SILENT_ARG_SHORT           = "-S";
 global_variable char *SAVE_DIR_OPTION_ARG        = "--save-dir=";
 
 typedef enum {
@@ -57,6 +61,7 @@ typedef struct {
     StringView  save_dir;
     Mode        mode;
     bool        copy_to_clipboard;
+    bool        silent;
 } Options;
 
 typedef struct {
@@ -376,6 +381,37 @@ void createFileName(char *format, char *buffer, int max_size) {
     strftime(buffer, max_size, format, tm_info);
 }
 
+pa_simple *initAudio() {
+    pa_simple *s;
+    int error;
+    static const pa_sample_spec ss = {
+        PA_SAMPLE_S16LE,  //format
+        44100,            //rate
+        2                 //channels
+    };
+
+    s = pa_simple_new(0, "des_screenshot", PA_STREAM_PLAYBACK, 0, "des_screenshot sound", &ss, 0, 0, &error);
+    if (!s) {
+        fprintf(stderr, "Failed to init audio, error: %d\n", error);
+    }
+
+    return s;
+}
+
+void playAudio(pa_simple *s, uint8 *audio, uint audio_size) {
+    int error;
+
+    if (pa_simple_write(s, audio, audio_size, &error) < 0) {
+        fprintf(stderr, "Failed to write audio, error: %d", error);
+        return;
+    }
+
+    if (pa_simple_drain(s, &error) < 0) {
+        fprintf(stderr, "Failed to drain audio, error: %d", error);
+        return;
+    }
+}
+
 void printHelpAndExit() {
     printf("Usage: des_screenshot [OPTIONS...]\n");
     printf("A list of options with a brief description is given below.\n");
@@ -385,6 +421,7 @@ void printHelpAndExit() {
     printf("%s, %s             "  "Takes a screenshot of the active window.\n",                                WINDOW_OPTION_ARG_SHORT,    WINDOW_OPTION_ARG   );
     printf("%s, %s             "  "Allows mouse selection of the area to take a screenshot of.\n",             SELECT_OPTION_ARG_SHORT,    SELECT_OPTION_ARG   );
     printf("%s, %s          "     "Saves the screenshot to the clipboard.\n",                                  CLIPBOARD_OPTION_ARG_SHORT, CLIPBOARD_OPTION_ARG);
+    printf("%s, %s             "  "No audio is played when taking a screenshot.\n",                            SILENT_ARG_SHORT,           SILENT_ARG          );
     printf("    %s          "     "Directory to save the screenshot to; defaults to the current directory.\n", SAVE_DIR_OPTION_ARG                             );
     exit(1);
 }
@@ -392,14 +429,16 @@ void printHelpAndExit() {
 void parseArgs(int argc, char *argv[], Options *options) {
     for (int i = 1; i < argc; i++) {
         char *arg = argv[i];
-        if(strEquals(arg, HELP_OPTION_ARG)              || strEquals(arg, HELP_OPTION_ARG_SHORT)) {
+        if(strEquals(arg, HELP_OPTION_ARG)              || strEquals(arg, HELP_OPTION_ARG_SHORT))      {
             printHelpAndExit();
-        } else if (strEquals(arg, WINDOW_OPTION_ARG)    || strEquals(arg, WINDOW_OPTION_ARG_SHORT)) {
+        } else if (strEquals(arg, WINDOW_OPTION_ARG)    || strEquals(arg, WINDOW_OPTION_ARG_SHORT))    {
             options->mode = MODE_ACTIVE_WINDOW;
-        } else if (strEquals(arg, SELECT_OPTION_ARG)    || strEquals(arg, SELECT_OPTION_ARG_SHORT)) {
+        } else if (strEquals(arg, SELECT_OPTION_ARG)    || strEquals(arg, SELECT_OPTION_ARG_SHORT))    {
             options->mode = MODE_MOUSE_SELECT;
         } else if (strEquals(arg, CLIPBOARD_OPTION_ARG) || strEquals(arg, CLIPBOARD_OPTION_ARG_SHORT)) {
             options->copy_to_clipboard = 1;
+        } else if  (strEquals(arg, SILENT_ARG)          || strEquals(arg, SILENT_ARG_SHORT))           {
+            options->silent = 1;
         } else if (strEquals(arg, SCREEN_OPTION_ARG)) {
             options->mode = MODE_ACTIVE_SCREEN;
         } else {
@@ -421,8 +460,18 @@ void parseArgs(int argc, char *argv[], Options *options) {
 
 int main(int argc, char *argv[]) {
     //Default options
-    Options options = {{0}, MODE_ACTIVE_SCREEN, 0};
+    Options options = {
+        {0},                //save_dir, set to working dir later
+        MODE_ACTIVE_SCREEN, //mode
+        0,                  //copy_to_clipboard
+        0,                  //silent
+    };
+
     parseArgs(argc, argv, &options);
+    pa_simple *audio_simple = 0;
+    if (!options.silent) {
+        audio_simple = initAudio();
+    }
 
     Display *display = XOpenDisplay(NULL);
 
@@ -533,14 +582,20 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Path %s doesn't exist.\n", options.save_dir.data);
         }
     }
-
     free(png_data);
     XDestroyImage(image);
 
-    if (file_created && options.copy_to_clipboard) {
-        int pid = fork();
-        if (pid == 0) {
-            setUpClipboard(display, root_window, (char *)file_name_buffer);
+    if (file_created) {
+        if (options.copy_to_clipboard) {
+            int pid = fork();
+            if (pid == 0) {
+                setUpClipboard(display, root_window, (char *)file_name_buffer);
+            }
+        }
+
+        if (!options.silent && audio_simple) {
+            playAudio(audio_simple, screenshot_sound_wav, screenshot_sound_wav_len);
+            pa_simple_free(audio_simple);
         }
     }
 }
