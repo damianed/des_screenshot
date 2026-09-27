@@ -1,0 +1,5 @@
+- ma_device_init starts the thread throught ma_thread_create which passes ma_worker_thread function as entryPoint
+- I can set a breakpoint in gdb to ma_worker_thread to follow how it works
+- I seems to call a pulseaudio function pluse audio pa_stream_begin_write
+- ma_device_audio_thread__default_read_write is the blocking read-write maybe look into that one instead
+
