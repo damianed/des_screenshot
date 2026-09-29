@@ -35,6 +35,7 @@ A list of options with a brief description is given below.
 -w, --window             Takes a screenshot of the active window.
 -s, --select             Allows mouse selection of the area to take a screenshot of.
 -c, --clipboard          Saves the screenshot to the clipboard.
+-S, --silent             No audio is played when taking a screenshot.
     --save-dir=          Directory to save the screenshot to; defaults to the current directory.
 ```
 
