@@ -35,6 +35,7 @@ A list of options with a brief description is given below.
 -w, --window             Takes a screenshot of the active window.
 -s, --select             Allows mouse selection of the area to take a screenshot of.
 -c, --clipboard          Saves the screenshot to the clipboard.
+-S, --silent             No audio is played when taking a screenshot.
     --save-dir=          Directory to save the screenshot to; defaults to the current directory.
 ```
 
@@ -57,4 +58,4 @@ bindsym $mod+Shift+Print --release exec --no-startup-id des_screenshot --window 
 
 You can download the precompiled binary from the [releases page](https://github.com/damianed/des_screenshot/releases/), or you can build it yourself by running the `build-release.sh` script located in the `build/` folder.
 
-Then, copy the binary to a folder where you want it to live (e.g., `/usr/bin/`) and add the binary to your `PATH` if its containing folder isn't already in it.
+Then, copy the binary to a folder where you want it to live (e.g., `/usr/local/bin/`) and add the binary to your `PATH` if its containing folder isn't already in it.
