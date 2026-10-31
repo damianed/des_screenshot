@@ -200,10 +200,10 @@ ScreenSection getActiveWindow(Display *display, Window *root_window) {
 }
 
 void initializeBorderWindows(Display *display, Window root, Window BORDERS[4], uint size) {
-    XSetWindowAttributes attr;
+    XSetWindowAttributes attr = {0};
     Screen *screen              = DefaultScreenOfDisplay(display);
     attr.background_pixel       = XWhitePixel(display, 0);
-    attr.override_redirect      = 1;
+    attr.override_redirect      = true;
     Atom win_type               = XInternAtom(display, "_NET_WM_WINDOW_TYPE", 0);
     Atom win_dock               = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", 0);
 
@@ -226,13 +226,14 @@ void initializeBorderWindows(Display *display, Window root, Window BORDERS[4], u
                 (unsigned char *)&win_dock, 1
         );
     }
+
 }
 
 void drawSelectionBorders(Display *display, Window root, int x, int y, int width, int height) {
-    local_persist int borders_initialized = 0;
+    local_persist bool borders_initialized = false;
     if (!borders_initialized) {
         initializeBorderWindows(display, root, BORDERS, BORDERS_COUNT);
-        borders_initialized = 1;
+        borders_initialized = true;
     }
 
     if (width == 0 || height == 0) {
@@ -302,8 +303,9 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     int rect_height     = 0;
     XEvent e;
 
-    while (1) {
-        if (XPending(display)) {
+    bool should_stop = false;
+    while (!should_stop) {
+        while (XPending(display)) {
             XNextEvent(display, &e);
 
             if (select_started && e.type == MotionNotify) {
@@ -321,12 +323,6 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
                     rect_y      = e.xmotion.y;
                     rect_height = 0 - rect_height;
                 }
-
-                drawSelectionBorders(
-                        display, *root_window,
-                        rect_x, rect_y,
-                        rect_width, rect_height
-                );
             }
 
             if (!select_started && e.type == ButtonPress) {
@@ -347,6 +343,8 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
                 result.width  = rect_width;
                 result.height = rect_height;
                 result.valid  = 1;
+
+                should_stop  = true;
                 break;
             }
 
@@ -355,9 +353,16 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
             //so I need to add --release
             if (e.type == KeyPress) {
                 printf("Key pressed canceling...\n");
+                should_stop  = true;
                 break;
             }
         }
+
+        drawSelectionBorders(
+                display, *root_window,
+                rect_x, rect_y,
+                rect_width, rect_height
+        );
     }
 
     XFreeCursor(display, cursor);
