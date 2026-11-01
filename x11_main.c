@@ -532,7 +532,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    size_t memory_size = image->width * image->height * (image->bits_per_pixel * 4);
+    size_t memory_size = image->width * image->height * sizeof(uint);
     uint *png_data = malloc(memory_size);
     if (png_data == NULL) {
         printf("Failed to allocate %zu bytes\n", memory_size);
@@ -544,24 +544,21 @@ int main(int argc, char *argv[]) {
         uint g_shift = getShiftAmount(image->green_mask);
         uint b_shift = getShiftAmount(image->blue_mask);
 
-        for (int row = 0; row < image->height; ++row) {
-            for (int col = 0; col < image->width; ++col) {
-                int index = (row * image->width) + col;
-                uint pixel = (((uint *) image->data)[index]);
+        int  data_size = image->height * image->width;
+        for (int i = 0; i < data_size; i++) {
+            uint pixel = (((uint *) image->data)[i]);
+            uint8 r = (pixel & image->red_mask)   >> r_shift;
+            uint8 g = (pixel & image->green_mask) >> g_shift;
+            uint8 b = (pixel & image->blue_mask)  >> b_shift;
 
-                uint8 r = (pixel & image->red_mask)   >> r_shift;
-                uint8 g = (pixel & image->green_mask) >> g_shift;
-                uint8 b = (pixel & image->blue_mask)  >> b_shift;
+            pixel = 0xff000000; // reset to 0 except for alpha
 
-                pixel = 0xff000000; // reset to 0 except for alpha
+            // switch r and b
+            pixel = pixel | (r << b_shift);
+            pixel = pixel | (g << g_shift);
+            pixel = pixel | (b << r_shift);
 
-                // switch r and b
-                pixel = pixel | (r << b_shift);
-                pixel = pixel | (g << g_shift);
-                pixel = pixel | (b << r_shift);
-
-                png_data[index] = pixel;
-            }
+            png_data[i] = pixel;
         }
     }
 
