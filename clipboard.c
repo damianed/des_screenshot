@@ -28,7 +28,7 @@ static void sendTargets(Display *display, XSelectionRequestEvent *request, Atom 
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
 
-static void sendPng(Display *display, char *image_path, XSelectionRequestEvent *request, Atom png) {
+static void sendPng(Display *display, const char *image_path, XSelectionRequestEvent *request, Atom png) {
     XSelectionEvent res;
     if (IMAGE.data == NULL) {
         FILE *file = fopen(image_path, "rb");
@@ -91,7 +91,7 @@ static void sendNo(Display *display, XSelectionRequestEvent *request) {
     XSendEvent(display, request->requestor, 1, NoEventMask, (XEvent *) &res);
 }
 
-void setUpClipboard(Display *display, Window root, char *image_path) {
+void setUpClipboard(Display *display, Window root, const char *image_path) {
     Window window  = XCreateSimpleWindow(display, root, -10, -10, 1, 1, 0, 0, 0);
 
     Atom clipboard = XInternAtom(display, "CLIPBOARD", 0);

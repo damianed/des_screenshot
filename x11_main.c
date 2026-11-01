@@ -104,16 +104,20 @@ ScreenSection getActiveScreenFromXrandr(Display *display, Window *root_window) {
         if (root_x >= 0 && root_y >= 0) {
             for (int i = 0; i < screens->ncrtc; i++) {
                 XRRCrtcInfo *info = XRRGetCrtcInfo(display, screens, screens->crtcs[i]);
-
+                int info_x = info->x;
+                int info_y = info->y;
+                uint info_width = info->width;
+                uint info_height = info->height;
+                XRRFreeCrtcInfo(info);
                 if (
-                    (root_x >= info->x && (uint) root_x < info->x + (uint) info->width) &&
-                    (root_y >= info->y && (uint) root_y < info->y + (uint) info->height)
-                ) {
+                    (root_x >= info_x && (uint) root_x < info_x + (uint) info_width) &&
+                    (root_y >= info_y && (uint) root_y < info_y + (uint) info_height)
+                ){
                     result.valid  = 1;
-                    result.x      = info->x;
-                    result.y      = info->y;
-                    result.width  = info->width;
-                    result.height = info->height;
+                    result.x      = info_x;
+                    result.y      = info_y;
+                    result.width  = info_width;
+                    result.height = info_height;
                     break;
                 }
             }
@@ -376,7 +380,7 @@ ScreenSection getMouseSelection(Display *display, Window *root_window) {
     return result;
 }
 
-void createFileName(char *format, char *buffer, int max_size) {
+void createFileName(const char *format, char *buffer, int max_size) {
     time_t now;
     struct tm *tm_info;
 
@@ -563,19 +567,19 @@ int main(int argc, char *argv[]) {
     }
 
 #define FULL_PATH_BUFFER_SIZE 1024
-    char *file_name_buffer[FULL_PATH_BUFFER_SIZE];
+    char file_name_buffer[FULL_PATH_BUFFER_SIZE];
     if (options.save_dir.size > 1 && options.save_dir.data[options.save_dir.size - 1] == '/') {
         options.save_dir.data[--options.save_dir.size] = '\0';
     }
     if (options.save_dir.size == 0) {
         options.save_dir = (StringView) {"./", 2};
     }
-    strncpy((char *)file_name_buffer, options.save_dir.data, FULL_PATH_BUFFER_SIZE);
-    createFileName("/des_screenshot_%Y_%m_%d-%H_%M_%S.png", ((char *)file_name_buffer) + options.save_dir.size, FULL_PATH_BUFFER_SIZE - options.save_dir.size);
+    strncpy(file_name_buffer, options.save_dir.data, FULL_PATH_BUFFER_SIZE);
+    createFileName("/des_screenshot_%Y_%m_%d-%H_%M_%S.png", file_name_buffer + options.save_dir.size, FULL_PATH_BUFFER_SIZE - options.save_dir.size);
 
     bool file_created = 0;
     if (access(options.save_dir.data, W_OK) == 0) {
-        stbi_write_png((char *)file_name_buffer, image->width, image->height, 4, png_data, image->width * 4);
+        stbi_write_png(file_name_buffer, image->width, image->height, 4, png_data, image->width * 4);
         file_created = 1;
     } else {
         if (access(options.save_dir.data, F_OK) == 0) {
@@ -591,7 +595,7 @@ int main(int argc, char *argv[]) {
         if (options.copy_to_clipboard) {
             int pid = fork();
             if (pid == 0) {
-                setUpClipboard(display, root_window, (char *)file_name_buffer);
+                setUpClipboard(display, root_window, file_name_buffer);
             }
         }
 

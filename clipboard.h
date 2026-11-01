@@ -1,3 +1,3 @@
 #include <X11/Xlib.h>
 
-void setUpClipboard(Display *display, Window root, char *image_path);
+void setUpClipboard(Display *display, Window root, const char *image_path);
